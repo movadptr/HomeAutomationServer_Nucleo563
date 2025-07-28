@@ -1,6 +1,0 @@
-../Middlewares/ST/netxduo/nx_secure/src/nx_secure_tls_process_serverhello_extensions.c:115:6:_nx_secure_tls_process_serverhello_extensions	37
-../Middlewares/ST/netxduo/nx_secure/src/nx_secure_tls_process_serverhello_extensions.c:436:13:_nx_secure_tls_proc_serverhello_ecc_point_formats	9
-../Middlewares/ST/netxduo/nx_secure/src/nx_secure_tls_process_serverhello_extensions.c:540:13:_nx_secure_tls_proc_serverhello_ecjpake_key_kp_pair	6
-../Middlewares/ST/netxduo/nx_secure/src/nx_secure_tls_process_serverhello_extensions.c:633:13:_nx_secure_tls_proc_serverhello_sec_reneg_extension	13
-../Middlewares/ST/netxduo/nx_secure/src/nx_secure_tls_process_serverhello_extensions.c:814:13:_nx_secure_tls_proc_serverhello_keyshare_extension	16
-../Middlewares/ST/netxduo/nx_secure/src/nx_secure_tls_process_serverhello_extensions.c:1045:13:_nx_secure_tls_proc_serverhello_supported_versions_extension	4

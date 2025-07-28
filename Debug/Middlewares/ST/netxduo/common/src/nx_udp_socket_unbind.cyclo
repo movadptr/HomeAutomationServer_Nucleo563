@@ -1,2 +1,0 @@
-../Middlewares/ST/netxduo/common/src/nx_udp_socket_unbind.c:72:13:_nx_udp_socket_driver_unbind	5
-../Middlewares/ST/netxduo/common/src/nx_udp_socket_unbind.c:168:7:_nx_udp_socket_unbind	12

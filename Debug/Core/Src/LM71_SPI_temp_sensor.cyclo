@@ -1,4 +1,0 @@
-../Core/Src/LM71_SPI_temp_sensor.c:12:7:convertLM71RawVal2Temp	3
-../Core/Src/LM71_SPI_temp_sensor.c:24:9:LM71_read	1
-../Core/Src/LM71_SPI_temp_sensor.c:38:9:LM71_init	1
-../Core/Src/LM71_SPI_temp_sensor.c:58:6:LM71_sleep	1

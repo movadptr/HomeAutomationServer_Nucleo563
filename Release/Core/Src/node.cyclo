@@ -1,9 +1,0 @@
-../Core/Src/node.c:29:6:N_WriteNode	1
-../Core/Src/node.c:36:6:N_WriteEveryRelevantNode	3
-../Core/Src/node.c:55:6:N_MasterRefreshAllNodeData	3
-../Core/Src/node.c:108:6:N_MasterInitNodeNetwork	2
-../Core/Src/node.c:129:6:N_MastrStoreCapabilities	4
-../Core/Src/node.c:221:5:N_AppendTxBuff	3
-../Core/Src/node.c:248:5:N_GetNodeData	3
-../Core/Src/node.c:270:5:N_StoreNodeData	4
-../Core/Src/node.c:75:5:N_MasterHandleRxData	6
