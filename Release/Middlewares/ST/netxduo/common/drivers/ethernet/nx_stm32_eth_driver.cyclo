@@ -1,0 +1,6 @@
+../Middlewares/ST/netxduo/common/drivers/ethernet/nx_stm32_eth_driver.c:144:7:nx_stm32_eth_driver	38
+../Middlewares/ST/netxduo/common/drivers/ethernet/nx_stm32_eth_driver.c:1907:6:HAL_ETH_TxFreeCallback	1
+../Middlewares/ST/netxduo/common/drivers/ethernet/nx_stm32_eth_driver.c:1929:6:HAL_ETH_RxAllocateCallback	2
+../Middlewares/ST/netxduo/common/drivers/ethernet/nx_stm32_eth_driver.c:1978:6:HAL_ETH_RxLinkCallback	2
+../Middlewares/ST/netxduo/common/drivers/ethernet/nx_stm32_eth_driver.c:2055:6:HAL_ETH_RxCpltCallback	2
+../Middlewares/ST/netxduo/common/drivers/ethernet/nx_stm32_eth_driver.c:2070:6:HAL_ETH_TxCpltCallback	2

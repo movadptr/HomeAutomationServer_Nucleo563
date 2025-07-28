@@ -1,0 +1,2 @@
+../Middlewares/ST/netxduo/nx_secure/src/nx_secure_tls_send_clienthello_extensions.c:147:6:_nx_secure_tls_send_clienthello_extensions	35
+../Middlewares/ST/netxduo/nx_secure/src/nx_secure_tls_send_clienthello_extensions.c:903:6:_nx_secure_tls_send_clienthello_psk_extension	12
