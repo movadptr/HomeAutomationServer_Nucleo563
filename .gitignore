@@ -65,4 +65,12 @@ dkms.conf
 *.txt
 *.md
 *.xml
+
+
+/Release
+/Debug
+*.prefs
+*.launch
+*.list
+
 Core/Inc/ha_secr.h
