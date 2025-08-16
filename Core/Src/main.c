@@ -71,7 +71,9 @@ UART_HandleTypeDef huart2;
 float PrevTemp_ROOM;
 
 HAdata_S HAdata = {0};
-HAalarms_S HAalarms = {0};
+
+uint32_t HAalarms[HA_ALARM_LEN] = {0};
+uint8_t CurrentAlarm = 0;
 
 extern TX_SEMAPHORE HTTPSSemaphore;
 
@@ -137,7 +139,9 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  init_alarm_struct(&HAalarms);
+
+  CLEAR_BIT(RTC->CR, RTC_CR_ALRBE | RTC_CR_ALRBIE);//Disable the Alarm B interrupt, will enable it when RTC is updated from SNTP
+  init_alarms(HAalarms);
 
 	BspCOMInit.BaudRate   = 115200;
 	BspCOMInit.WordLength = COM_WORDLENGTH_8B;
@@ -713,38 +717,67 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 	//alarm in every minute at 0 sec
 	if(RTC_Time.Seconds == 0)
 	{
-		tx_semaphore_put(&HTTPSSemaphore);
+		tx_semaphore_put(&HTTPSSemaphore);//start IP check and refresh
+
 
 
 	}
 
+	{//check if any alarm matches current time, then execute it
+		uint32_t current_ts = (RTC_Time.Hours*60*60)+(RTC_Time.Minutes*60)+RTC_Time.Seconds;
+		uint32_t alarm_indx = 0;
+		while(1)
+		{
+			alarm_indx = check_alarm(current_ts, HAalarms, alarm_indx+1);
+			if(alarm_indx == (-1))//no more alarm
+			{
+				break;
+			}
+			else
+			{
+				switch(alarm_indx)
+				{
+					case HA_SHADER_ALARM_MIDDAY:	N_WriteEveryRelevantNode(N_EAST_SHADER, 50, &node_capabilities_pp, &node_data_pp);
+													break;
+					case HA_SHADER_ALARM_EVENING:	N_WriteEveryRelevantNode(N_EAST_SHADER, -100, &node_capabilities_pp, &node_data_pp);
+													break;
+				}
+			}
+		}
+	}
 
 
-	char TimS[30] = {0};
-	time_t ts = get_rtc_time_date(hrtc, TimS);
+
+
+
 
 	HAdata.temperature_room = convertLM71RawVal2Temp(LM71_read(SPI_TEMP_ROOM_CS_Pin, SPI_TEMP_ROOM_CS_GPIO_Port));
 
-#ifdef DEBUG
-	printf("%s\n\r", TimS);
-	printf("Room temperature= %f\n\r", HAdata.temperature_room);
-#endif
+	{
+		char TimS[30] = {0};
+		time_t ts = get_rtc_time_date(hrtc, TimS);
 
-	if( (ts < (HAdata.last_action_timestamp+10)))
-	{
-		if(HAdata.screen_state == 0)
+	#ifdef DEBUG
+		printf("%s\n\r", TimS);
+		printf("Room temperature= %f\n\r", HAdata.temperature_room);
+	#endif
+
+		if( (ts < (HAdata.last_action_timestamp+10)))
 		{
-			HAdata.screen_state = 1;
-			oled_send_cmd(CMD_Display_on_normal_mode);
+			if(HAdata.screen_state == 0)
+			{
+				HAdata.screen_state = 1;
+				oled_send_cmd(CMD_Display_on_normal_mode);
+			}
+			update_screen(TimS);//update the small oled
 		}
-		update_screen(TimS);//update the small oled
-	}
-	else
-	{
-		if(HAdata.screen_state == 1)
+		else
 		{
-			HAdata.screen_state = 0;
-			oled_send_cmd(CMD_Display_off_sleep_mode);
+			if(HAdata.screen_state == 1)
+			{
+				HAdata.screen_state = 0;
+				oled_send_cmd(CMD_Display_off_sleep_mode);
+			}
 		}
 	}
 
@@ -761,29 +794,27 @@ void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin)
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////
-void init_alarm_struct(HAalarms_S* HAalarms_F)
+int8_t check_alarm(uint32_t current_time, uint32_t* HAalarms_F, int8_t start_indx)
 {
-	HAalarms_F->HA_ShaderAlarmMorning.AlarmTime.Hours = 0x0;
-	HAalarms_F->HA_ShaderAlarmMorning.AlarmTime.Minutes = 0x0;
-	HAalarms_F->HA_ShaderAlarmMorning.AlarmTime.Seconds = 0x0;
-	HAalarms_F->HA_ShaderAlarmMorning.AlarmTime.SubSeconds = 0x0;
-	HAalarms_F->HA_ShaderAlarmMorning.AlarmMask = RTC_ALARMMASK_DATEWEEKDAY;
-	HAalarms_F->HA_ShaderAlarmMorning.AlarmSubSecondMask = RTC_ALARMSUBSECONDMASK_ALL;
-	HAalarms_F->HA_ShaderAlarmMorning.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;
-	HAalarms_F->HA_ShaderAlarmMorning.AlarmDateWeekDay = 0x1;
-	HAalarms_F->HA_ShaderAlarmMorning.Alarm = RTC_ALARM_B;
-	HAalarms_F->HA_ShaderAlarmMorning.FlagAutoClr = ALARM_FLAG_AUTOCLR_ENABLE;
+	while(start_indx < HA_ALARM_LEN)
+	{
+		if(HAalarms_F[start_indx] == current_time)
+		{
+			return start_indx;
+		}
+		else{ start_indx++;}
+	}
+	return -1;
+}
 
-	HAalarms_F->HA_ShaderAlarmNoon.AlarmTime.Hours = 0x0;
-	HAalarms_F->HA_ShaderAlarmNoon.AlarmTime.Minutes = 0x0;
-	HAalarms_F->HA_ShaderAlarmNoon.AlarmTime.Seconds = 0x0;
-	HAalarms_F->HA_ShaderAlarmNoon.AlarmTime.SubSeconds = 0x0;
-	HAalarms_F->HA_ShaderAlarmNoon.AlarmMask = RTC_ALARMMASK_DATEWEEKDAY;
-	HAalarms_F->HA_ShaderAlarmNoon.AlarmSubSecondMask = RTC_ALARMSUBSECONDMASK_ALL;
-	HAalarms_F->HA_ShaderAlarmNoon.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;
-	HAalarms_F->HA_ShaderAlarmNoon.AlarmDateWeekDay = 0x1;
-	HAalarms_F->HA_ShaderAlarmNoon.Alarm = RTC_ALARM_B;
-	HAalarms_F->HA_ShaderAlarmNoon.FlagAutoClr = ALARM_FLAG_AUTOCLR_ENABLE;
+void init_alarms(uint32_t* HAalarms_F)
+{
+	//set default values
+	//									  hour        min
+	HAalarms_F[HA_SHADER_ALARM_MIDDAY] = ((8*60*60)+(54*60));
+	HAalarms_F[HA_SHADER_ALARM_EVENING] = ((8*60*60)+(56*60));
+	//HAalarms_F[HA_SHADER_ALARM_MIDDAY] = ((13*60*60)+(30*60));
+	//HAalarms_F[HA_SHADER_ALARM_EVENING] = ((20*60*60)+(30*60));
 }
 
 char* StrAllocAndCpy(char* str)
@@ -847,8 +878,8 @@ time_t get_rtc_time_date(RTC_HandleTypeDef *hrtc, char* tmps)
 #if (TIME_ZONE |  DAYLIGHTSAVE)
   time_t timestamp = RTCDateTime2timestamp(&RTC_Date, &RTC_Time);
 
-#ifdef	TIME_ZONE //adding 2 hour to display local time
-  	timestamp += 7200;
+#ifdef	TIME_ZONE //adding x hour to display local time
+  	timestamp += (TIME_ZONE*3600UL);
 #endif
 
 #ifdef DAYLIGHTSAVE

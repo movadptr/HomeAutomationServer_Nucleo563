@@ -543,6 +543,13 @@ static void App_SNTP_Thread_Entry(ULONG info)
   rtc_time_update(&SntpClient.nx_sntp_current_server_time_message, NULL);
 
 
+  //TODO set first closest alarm
+
+
+
+  // Enable the Alarm B interrupt
+  SET_BIT(RTC->CR, RTC_CR_ALRBE | RTC_CR_ALRBIE);
+
   /*
   // We can stop the SNTP service if for example we think the SNTP server has stopped sending updates
   ret = nx_sntp_client_stop(&SntpClient);
