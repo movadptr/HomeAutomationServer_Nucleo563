@@ -712,8 +712,18 @@ void HAL_RTCEx_AlarmBEventCallback(RTC_HandleTypeDef *hrtc)
  */
 void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 {
+	RTC_DateTypeDef RTC_Date = {0};
 	RTC_TimeTypeDef RTC_Time = {0};
+	char TimS[30] = {0};
+	time_t ts = 0;
+	//get time  date data from rtc
 	HAL_RTC_GetTime(hrtc,&RTC_Time,RTC_FORMAT_BIN);
+	HAL_RTC_GetDate(hrtc,&RTC_Date,RTC_FORMAT_BIN);
+	//convert to local time
+	ts = get_local_rtc_time_date(&RTC_Date, &RTC_Time, TimS);
+
+
+
 	//alarm in every minute at 0 sec
 	if(RTC_Time.Seconds == 0)
 	{
@@ -724,8 +734,9 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 	}
 
 	{//check if any alarm matches current time, then execute it
+		//TODO make a more robust implementation, so if an sntp update comes and sets the time after the alarm, it won't be skipped
 		uint32_t current_ts = (RTC_Time.Hours*60*60)+(RTC_Time.Minutes*60)+RTC_Time.Seconds;
-		uint32_t alarm_indx = 0;
+		int8_t alarm_indx = (-1);//so at the first call it will become zero
 		while(1)
 		{
 			alarm_indx = check_alarm(current_ts, HAalarms, alarm_indx+1);
@@ -737,9 +748,9 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 			{
 				switch(alarm_indx)
 				{
-					case HA_SHADER_ALARM_MIDDAY:	N_WriteEveryRelevantNode(N_EAST_SHADER, 50, &node_capabilities_pp, &node_data_pp);
+					case HA_SHADER_ALARM_MIDDAY:	N_WriteEveryRelevantNode(N_EAST_SHADER, N_SHADER_OPEN_POS, &node_capabilities_pp, &node_data_pp);
 													break;
-					case HA_SHADER_ALARM_EVENING:	N_WriteEveryRelevantNode(N_EAST_SHADER, -100, &node_capabilities_pp, &node_data_pp);
+					case HA_SHADER_ALARM_EVENING:	N_WriteEveryRelevantNode(N_EAST_SHADER, N_SHADER_CLOSED_POS, &node_capabilities_pp, &node_data_pp);
 													break;
 				}
 			}
@@ -747,20 +758,13 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 	}
 
 
-
-
-
-
-	HAdata.temperature_room = convertLM71RawVal2Temp(LM71_read(SPI_TEMP_ROOM_CS_Pin, SPI_TEMP_ROOM_CS_GPIO_Port));
+	HAdata.temperature_server = convertLM71RawVal2Temp(LM71_read(SPI_TEMP_ROOM_CS_Pin, SPI_TEMP_ROOM_CS_GPIO_Port));
 
 	{
-		char TimS[30] = {0};
-		time_t ts = get_rtc_time_date(hrtc, TimS);
-
-	#ifdef DEBUG
+#ifdef DEBUG
 		printf("%s\n\r", TimS);
-		printf("Room temperature= %f\n\r", HAdata.temperature_room);
-	#endif
+		printf("Room temperature= %f\n\r", HAdata.temperature_server);
+#endif
 
 		if( (ts < (HAdata.last_action_timestamp+10)))
 		{
@@ -788,7 +792,13 @@ void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin)
 {
 	if(GPIO_Pin == USER_BTN_Pin)
 	{
-		HAdata.last_action_timestamp =  get_rtc_time_date(&hrtc, NULL);
+		RTC_DateTypeDef RTC_Date = {0};
+		RTC_TimeTypeDef RTC_Time = {0};
+		//get time  date data from rtc
+		HAL_RTC_GetTime(&hrtc,&RTC_Time,RTC_FORMAT_BIN);
+		HAL_RTC_GetDate(&hrtc,&RTC_Date,RTC_FORMAT_BIN);
+		//store adjusted timestamp
+		HAdata.last_action_timestamp =  get_local_rtc_time_date(&RTC_Date, &RTC_Time, NULL);
 	}
 }
 
@@ -798,6 +808,9 @@ int8_t check_alarm(uint32_t current_time, uint32_t* HAalarms_F, int8_t start_ind
 {
 	while(start_indx < HA_ALARM_LEN)
 	{
+#ifdef DEBUG
+		printf("___%li___%li___\n\r",HAalarms_F[start_indx], current_time);
+#endif
 		if(HAalarms_F[start_indx] == current_time)
 		{
 			return start_indx;
@@ -809,12 +822,10 @@ int8_t check_alarm(uint32_t current_time, uint32_t* HAalarms_F, int8_t start_ind
 
 void init_alarms(uint32_t* HAalarms_F)
 {
-	//set default values
+	//set default values (second based timestamp, containing only hours minutes and seconds)
 	//									  hour        min
-	HAalarms_F[HA_SHADER_ALARM_MIDDAY] = ((8*60*60)+(54*60));
-	HAalarms_F[HA_SHADER_ALARM_EVENING] = ((8*60*60)+(56*60));
-	//HAalarms_F[HA_SHADER_ALARM_MIDDAY] = ((13*60*60)+(30*60));
-	//HAalarms_F[HA_SHADER_ALARM_EVENING] = ((20*60*60)+(30*60));
+	HAalarms_F[HA_SHADER_ALARM_MIDDAY] = ((13*60*60)+(30*60));
+	HAalarms_F[HA_SHADER_ALARM_EVENING] = ((20*60*60)+(30*60));
 }
 
 char* StrAllocAndCpy(char* str)
@@ -866,43 +877,39 @@ void SetSmoothCalib(int16_t calv)
 }
 
 // this fn deals with time zone and daylightsave
-time_t get_rtc_time_date(RTC_HandleTypeDef *hrtc, char* tmps)
+// if tmps block is provided then it produces a text representation into it
+// returns an adjusted timestamp
+time_t get_local_rtc_time_date(RTC_DateTypeDef* RTC_Date_p,  RTC_TimeTypeDef* RTC_Time_p, char* tmps)
 {
-  RTC_TimeTypeDef RTC_Time = {0};
-  RTC_DateTypeDef RTC_Date = {0};
 
-  HAL_RTC_GetTime(hrtc,&RTC_Time,RTC_FORMAT_BIN);
-  HAL_RTC_GetDate(hrtc,&RTC_Date,RTC_FORMAT_BIN);
-
-
-#if (TIME_ZONE |  DAYLIGHTSAVE)
-  time_t timestamp = RTCDateTime2timestamp(&RTC_Date, &RTC_Time);
+#if (TIME_ZONE | DAYLIGHTSAVE)
+	//convert rtc struct to timestramp, to be able to easily work on
+	time_t timestamp = RTCDateTime2timestamp(RTC_Date_p, RTC_Time_p);
 
 #ifdef	TIME_ZONE //adding x hour to display local time
   	timestamp += (TIME_ZONE*3600UL);
-#endif
+#endif//TIME_ZONE
 
 #ifdef DAYLIGHTSAVE
-	time_t timestamp_thisyear_oct_27_3_00 = RTCDateTime2timestamp_(RTC_Date.Year, 10, 27, 3, 0, 0);
-	time_t timestamp_thisyear_march_31_2_00 = RTCDateTime2timestamp_(RTC_Date.Year, 3, 31, 2, 0, 0);
+	time_t timestamp_thisyear_oct_27_3_00 = RTCDateTime2timestamp_(RTC_Date_p->Year, 10, 27, 3, 0, 0);
+	time_t timestamp_thisyear_march_31_2_00 = RTCDateTime2timestamp_(RTC_Date_p->Year, 3, 31, 2, 0, 0);
 
 	if((timestamp <= timestamp_thisyear_march_31_2_00) || (timestamp >= timestamp_thisyear_oct_27_3_00))
 	{
 		timestamp -= 3600;
 	}
-#endif
-
-	timestamp2RTCDateTime(timestamp, &RTC_Date, &RTC_Time);
-#endif
+#endif//DAYLIGHTSAVE
+	//convert the ts back to rtc date time struct
+	timestamp2RTCDateTime(timestamp, RTC_Date_p, RTC_Time_p);
+#endif//(TIME_ZONE | DAYLIGHTSAVE)
 
 	if(tmps != NULL)
 	{
-		sprintf(tmps, "20%02i-%02i-%02i / %02i:%02i:%02i", RTC_Date.Year, RTC_Date.Month, RTC_Date.Date, RTC_Time.Hours, RTC_Time.Minutes, RTC_Time.Seconds);
+		sprintf(tmps, "20%02i-%02i-%02i / %02i:%02i:%02i", RTC_Date_p->Year, RTC_Date_p->Month, RTC_Date_p->Date, RTC_Time_p->Hours, RTC_Time_p->Minutes, RTC_Time_p->Seconds);
 	}
 
 	return timestamp;
 }
-
 
 void timestamp2RTCDateTime(time_t timestamp, RTC_DateTypeDef *RD, RTC_TimeTypeDef *RT)
 {

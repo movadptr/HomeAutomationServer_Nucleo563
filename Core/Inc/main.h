@@ -51,8 +51,7 @@ extern "C" {
 /* USER CODE BEGIN ET */
 typedef struct
 {
-	float temperature_outside;
-	float temperature_room;
+	float temperature_server;
 	time_t last_action_timestamp;
 	uint8_t screen_state;
 } HAdata_S;
@@ -85,7 +84,7 @@ void update_screen(char* tmpTimS);
 void timestamp2RTCDateTime(time_t timestamp, RTC_DateTypeDef *RD, RTC_TimeTypeDef *RT);
 time_t RTCDateTime2timestamp_(uint8_t year, uint8_t month, uint8_t day, uint8_t hour, uint8_t min, uint8_t sec);
 time_t RTCDateTime2timestamp(RTC_DateTypeDef *RD, RTC_TimeTypeDef *RT);
-time_t get_rtc_time_date(RTC_HandleTypeDef *hrtc, char* tmps);
+time_t get_local_rtc_time_date(RTC_DateTypeDef* RTC_Date_p,  RTC_TimeTypeDef* RTC_Time_p, char* tmps);
 void SetSmoothCalib(int16_t calv);
 char* StrAllocAndCpy(char* str);
 void init_alarms(uint32_t* HAalarms_F);

@@ -40,6 +40,9 @@
 //node functions
 #define N_FUNCTION_NONE					0x00
 #define N_EAST_SHADER					0x01
+#define N_SHADER_OPEN_POS	(-100)
+#define N_SHADER_CLOSED_POS	100
+
 #define N_WEST_SHADER 					0x02
 #define N_NORTH_SHADER					0x03
 #define N_SOUTH_SHADER					0x04
@@ -53,7 +56,7 @@
 #define N_INDICATOR_LED					0x0C
 
 //compile switches for node functionality
-
+//TODO use this
 #define USE_N_EAST_SHADER					0x0001
 #define USE_N_WEST_SHADER 					0x0002
 #define USE_N_NORTH_SHADER					0x0004
