@@ -170,9 +170,6 @@ int main(void)
 
   /* USER CODE END 2 */
 
-
-  /* We should never get here as control is now taken by the scheduler */
-
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
@@ -675,6 +672,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF10_USB;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : FRNTDRSW_Pin */
+  GPIO_InitStruct.Pin = FRNTDRSW_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(FRNTDRSW_GPIO_Port, &GPIO_InitStruct);
+
   /*Configure GPIO pins : ARD_D1_TX_Pin ARD_D0_RX_Pin */
   GPIO_InitStruct.Pin = ARD_D1_TX_Pin|ARD_D0_RX_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
@@ -684,6 +687,9 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI3_IRQn);
+
   HAL_NVIC_SetPriority(EXTI13_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI13_IRQn);
 
@@ -724,12 +730,10 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 
 
 
-	//alarm in every minute at 0 sec
-	if(RTC_Time.Seconds == 0)
+	//alarm in every odd second
+	if(RTC_Time.Seconds & 0x01)
 	{
 		tx_semaphore_put(&HTTPSSemaphore);//start IP check and refresh
-
-
 
 	}
 
@@ -824,8 +828,8 @@ void init_alarms(uint32_t* HAalarms_F)
 {
 	//set default values (second based timestamp, containing only hours minutes and seconds)
 	//									  hour        min
-	HAalarms_F[HA_SHADER_ALARM_MIDDAY] = ((13*60*60)+(30*60));
-	HAalarms_F[HA_SHADER_ALARM_EVENING] = ((20*60*60)+(30*60));
+	HAalarms_F[HA_SHADER_ALARM_MIDDAY] = ((12*60*60)+(30*60));
+	HAalarms_F[HA_SHADER_ALARM_EVENING] = ((19*60*60)+(30*60));
 }
 
 char* StrAllocAndCpy(char* str)
@@ -891,7 +895,7 @@ time_t get_local_rtc_time_date(RTC_DateTypeDef* RTC_Date_p,  RTC_TimeTypeDef* RT
 #endif//TIME_ZONE
 
 #ifdef DAYLIGHTSAVE
-	time_t timestamp_thisyear_oct_27_3_00 = RTCDateTime2timestamp_(RTC_Date_p->Year, 10, 27, 3, 0, 0);
+	time_t timestamp_thisyear_oct_27_3_00 = RTCDateTime2timestamp_(RTC_Date_p->Year, 10, 26, 3, 0, 0);
 	time_t timestamp_thisyear_march_31_2_00 = RTCDateTime2timestamp_(RTC_Date_p->Year, 3, 31, 2, 0, 0);
 
 	if((timestamp <= timestamp_thisyear_march_31_2_00) || (timestamp >= timestamp_thisyear_oct_27_3_00))

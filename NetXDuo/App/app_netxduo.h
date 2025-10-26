@@ -129,7 +129,9 @@ UINT MX_NetXDuo_Init(VOID *memory_ptr);
 
 /* Private defines -----------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define QUEUE_MAX_SIZE           512
+#define QUEUE_MAX_SIZE          512
+
+#define UDP_DATA_LEN			512
 
 //#define DEFAULT_MEMORY_SIZE      1024
 //#define DEFAULT_PRIORITY         10

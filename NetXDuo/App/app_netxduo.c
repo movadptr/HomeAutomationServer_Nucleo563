@@ -82,6 +82,8 @@ extern UART_HandleTypeDef huart2;
 extern uint8_t** node_capabilities_pp;
 extern uint32_t** node_data_pp;
 
+extern RTC_HandleTypeDef hrtc;
+uint8_t time_update_after_boot_flag = 0;
 
 TX_SEMAPHORE HTTPSSemaphore;
 
@@ -104,6 +106,7 @@ static NX_SECURE_X509_CERT remote_certificate, remote_issuer;
 static UCHAR remote_cert_buffer[18000];
 static UCHAR remote_issuer_buffer[18000];
 extern NX_SECURE_TLS_CRYPTO nx_crypto_tls_ciphers;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -529,6 +532,7 @@ static void App_SNTP_Thread_Entry(ULONG info)
     }
     else
     {
+      time_update_after_boot_flag = 1;
       printf("\nSNTP update :\n\r");
       printf("%s\n\n\r",buffer);
 
@@ -582,6 +586,8 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
   ULONG source_ip_address;
   NX_PACKET *data_packet;
 
+  HAdata.time_update_after_boot_timestamp = NULL;
+
   //create the UDP socket
   ret = nx_udp_socket_create(&NetXDuoEthIpInstance, &UDPSocket, "UDP Server Socket", NX_IP_NORMAL, NX_FRAGMENT_OKAY, NX_IP_TIME_TO_LIVE, QUEUE_MAX_SIZE);
 
@@ -622,6 +628,16 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
 		//store adjusted timestamp
 		HAdata.last_action_timestamp =  get_local_rtc_time_date(&RTC_Date, &RTC_Time, tmps);
 
+		if(time_update_after_boot_flag == 1)
+		{
+			time_update_after_boot_flag = 0;
+			if(HAdata.time_update_after_boot_timestamp != NULL)//can't happen because after boot it should be empty but bab
+			{
+				free(HAdata.time_update_after_boot_timestamp);
+				HAdata.time_update_after_boot_timestamp = NULL;
+			}
+			HAdata.time_update_after_boot_timestamp = StrAllocAndCpy(tmps);
+		}
 
 		if(strcmp((char*)data_buffer, HA_SECR_STR1) == 0)
 		{
@@ -632,7 +648,7 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
 			/*union{float f; uint32_t u;}cnv;
 			if(outtemp_p != NULL)	{ cnv.u = (*outtemp_p);}
 								else{ cnv.u = 0;}//error*/
-			sprintf(txstr,"INFO_server datetime:\t\t%s\nServer temp:\t\t%.2f°C\n",tmps, HAdata.temperature_server);
+			sprintf(txstr,"INFO_Server datetime:\t\t%s\nServer temp:\t\t%.2f°C\nBoot datetime:\t\t%s",tmps, HAdata.temperature_server, HAdata.time_update_after_boot_timestamp!=0?HAdata.time_update_after_boot_timestamp:"no_ts");
 
 			ret = createAndSendUDPPacket(source_ip_address, source_port, txstr);
 		}
@@ -659,7 +675,6 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
 			N_WriteEveryRelevantNode(N_EAST_SHADER, cnv.u, &node_capabilities_pp, &node_data_pp);
 		}
 
-
 		//resend the same packet to the client
 		//ret = nx_udp_socket_send(&UDPSocket, data_packet, source_ip_address, source_port);
 		//if we are not resending the packet, we have to release it manually
@@ -670,8 +685,10 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
     }
     else
     {
+#ifdef DEBUG
         //the server is in idle state, toggle the green led
         HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
+#endif
     }
   }
 }
@@ -733,6 +750,9 @@ static VOID App_HTTPS_Thread_Entry(ULONG thread_input)
 	UINT status = NX_SUCCESS;
 	ULONG StoredIpAddress = 0;
 	char* public_ip_str;
+	RTC_DateTypeDef RTC_Date = {0};
+	RTC_TimeTypeDef RTC_Time = {0};
+	char tmps[30]={0};
 
 	tx_semaphore_create(&HTTPSSemaphore, "HTTPS_semaphore", 0);
 
@@ -740,6 +760,12 @@ static VOID App_HTTPS_Thread_Entry(ULONG thread_input)
 	{
 		//suspend thread and wait for semaphore put
 		tx_semaphore_get(&HTTPSSemaphore, NX_WAIT_FOREVER);
+
+
+		//get time  date data from rtc
+		HAL_RTC_GetTime(&RtcHandle,&RTC_Time,RTC_FORMAT_BIN);
+		HAL_RTC_GetDate(&RtcHandle,&RTC_Date,RTC_FORMAT_BIN);
+		get_local_rtc_time_date(&RTC_Date, &RTC_Time, tmps);
 
 
 		//get public IP
@@ -767,6 +793,7 @@ static VOID App_HTTPS_Thread_Entry(ULONG thread_input)
 				ipstr_cleanup(public_ip_str, input_data.return_data_p);
 				PublicIpAddress = StrIp2Ulong(public_ip_str);
 				free(public_ip_str);
+				public_ip_str = NULL;
 			}
 
 			//cleanup
@@ -858,14 +885,14 @@ static VOID App_HTTPS_Thread_Entry(ULONG thread_input)
 			if(input_data.hostURL == NULL)	{ Error_Handler();}
 			input_data.resource = StrAllocAndCpy(HA_SECR_STR6);
 			if(input_data.resource == NULL)	{ Error_Handler();}
-			ULONG part1 = strlen("{\"fields\": {\"tmp\": {\"stringValue\": \"");
+			ULONG part1 = strlen(HA_SECR_STR7);
 			ULONG part2 = strlen(patch_ip_str);
-			ULONG part3 = (strlen("\"}}}") + 1);
+			ULONG part3 = (strlen(HA_SECR_STR8) + 1);
 			input_data.resource_content = calloc(part1+part2+part3, 1);
 			if(input_data.resource_content == NULL)	{ Error_Handler();}
-			strcpy(input_data.resource_content, "{\"fields\": {\"tmp\": {\"stringValue\": \"");
+			strcpy(input_data.resource_content, HA_SECR_STR7);
 			strcpy(input_data.resource_content+part1, patch_ip_str);
-			strcpy(input_data.resource_content+part1+part2, "\"}}}");
+			strcpy(input_data.resource_content+part1+part2, HA_SECR_STR8);
 			input_data.method = NX_WEB_HTTP_METHOD_PATCH;
 
 			//patch
@@ -895,6 +922,71 @@ static VOID App_HTTPS_Thread_Entry(ULONG thread_input)
 				input_data.return_data_p = NULL;
 			}
 		}
+
+		{//get fdr info if changed //see comment is secr
+			uint32_t oldval = 0;
+			uint32_t* newval = NULL;
+
+			N_MasterGetFirstRelevantNodeData(N_SECR_FDPS, &oldval, &node_capabilities_pp, &node_data_pp);
+			N_MasterReadFirstRelevantNodeData(N_SECR_FDPS, &newval, &node_capabilities_pp, &node_data_pp);
+
+			if(oldval != (*newval))
+			{
+				char state_str[8] = {0};
+				if((*newval) == 0)	{ strcpy(state_str, HA_SECR_STR13);}
+				else{ strcpy(state_str, HA_SECR_STR14);}
+
+				//init
+				HTTP_RSC_STRUCT input_data;
+				input_data.server_ip_address.nxd_ip_version = NX_IP_VERSION_V4;
+				input_data.hostURL = StrAllocAndCpy("firestore.googleapis.com");
+				if(input_data.hostURL == NULL)	{ Error_Handler();}
+				input_data.resource = StrAllocAndCpy(HA_SECR_STR10);
+				if(input_data.resource == NULL)	{ Error_Handler();}
+				ULONG part1 = strlen(HA_SECR_STR11);
+				ULONG part2 = strlen(tmps);
+				ULONG part3 = strlen(HA_SECR_STR12);
+				ULONG part4 = strlen(state_str);
+				ULONG part5 = (strlen(HA_SECR_STR8) + 1);
+
+				input_data.resource_content = calloc(part1+part2+part3+part4+part5, 1);
+				if(input_data.resource_content == NULL)	{ Error_Handler();}
+				strcpy(input_data.resource_content, HA_SECR_STR11);
+				strcpy(input_data.resource_content+part1, tmps);
+				strcpy(input_data.resource_content+part1+part2, HA_SECR_STR12);
+				strcpy(input_data.resource_content+part1+part2+part3, state_str);
+				strcpy(input_data.resource_content+part1+part2+part3+part4, HA_SECR_STR8);
+
+				input_data.method = NX_WEB_HTTP_METHOD_PATCH;
+
+				//patch
+				status = Http_request(&input_data);
+				if(status != NX_SUCCESS)	{ printf("firebase patch request not successful, status:%i\n\r", status);}
+				else
+				{
+					printf("patch content:%s\n\r", input_data.resource_content);
+					printf("patch status:%i\n\r", status);
+				}
+
+				//process
+				//no response expected from patch request
+
+				//cleanup
+				free(input_data.hostURL);
+				input_data.hostURL = NULL;
+				free(input_data.resource);
+				input_data.resource = NULL;
+				free(input_data.resource_content);
+				input_data.resource_content = NULL;
+				if(input_data.return_data_p != NULL)
+				{
+					free(input_data.return_data_p);
+					input_data.return_data_p = NULL;
+				}
+			}
+		}
+
+
 	}
 }
 
@@ -1134,9 +1226,7 @@ UINT Http_request(HTTP_RSC_STRUCT* resources)
 				status = nx_packet_release(receive_packet);
 				receive_packet = NULL;
 			}
-
 		}
-
 	}
 
 	// Clear out the HTTP client when we are done.
@@ -1212,10 +1302,11 @@ UINT tls_setup_callback(NX_WEB_HTTP_CLIENT *client_ptr, NX_SECURE_TLS_SESSION *t
 UINT createAndSendUDPPacket(ULONG ip_address, UINT port, char* data)
 {
 	UINT ret = 0;
-	char data_buffer[512]={0};
+	char* data_buffer = calloc(UDP_DATA_LEN, sizeof(char));
+
 	NX_PACKET *data_packet;
 
-	if(strlen(data) > (512-1))
+	if(strlen(data) > (UDP_DATA_LEN-1))
 	{
 		ret = NX_SIZE_ERROR;
 		return ret;
@@ -1229,12 +1320,13 @@ UINT createAndSendUDPPacket(ULONG ip_address, UINT port, char* data)
 	ret = nx_packet_allocate(&NxAppPool, &data_packet, NX_UDP_PACKET, TX_WAIT_FOREVER);
 	if (ret != NX_SUCCESS)	{ Error_Handler();}
 
-	ret = nx_packet_data_append(data_packet, data_buffer, sizeof(data_buffer), &NxAppPool, TX_WAIT_FOREVER);
+	ret = nx_packet_data_append(data_packet, data_buffer, UDP_DATA_LEN, &NxAppPool, TX_WAIT_FOREVER);
 	if (ret != NX_SUCCESS)	{ Error_Handler();}
 
 	//send the message
 	ret = nx_udp_socket_send(&UDPSocket, data_packet, ip_address, port);
 
+	free(data_buffer);
 	return ret;
 }
 
@@ -1320,9 +1412,6 @@ static UINT kiss_of_death_handler(NX_SNTP_CLIENT *client_ptr, UINT KOD_code)
  */
 static VOID time_update_callback(NX_SNTP_TIME_MESSAGE *time_update_ptr, NX_SNTP_TIME *local_time)
 {
-  //NX_PARAMETER_NOT_USED(time_update_ptr);
-  //NX_PARAMETER_NOT_USED(local_time);
-
   rtc_time_update(time_update_ptr, local_time);
 
   printf("Local time updated from SNTP server\n\r");

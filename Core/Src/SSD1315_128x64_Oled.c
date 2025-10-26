@@ -135,7 +135,7 @@ extern I2C_HandleTypeDef hi2c2;
 void print_disp_mat(void)
 {
 	volatile uint8_t i=0, k=0;
-	 uint8_t tmp[pixels_y+1] = {0};
+	uint8_t* tmp = calloc(pixels_y+1, sizeof(uint8_t));
 	tmp[0]=Next_Will_Be_Data;
 
 	for(k=0; k<8; k++)
@@ -147,12 +147,14 @@ void print_disp_mat(void)
 		}
 		HAL_I2C_Master_Transmit(&hi2c2, (uint16_t)Disp_Addr, tmp, pixels_y+1, 1000);
 	}
+
+	free(tmp);
 }
 
 void delete_RAM(void)
 {
 	volatile uint8_t k=0;
-	uint8_t tmp[pixels_y+1] = {0};
+	uint8_t* tmp = calloc(pixels_y+1, sizeof(uint8_t));
 	tmp[0]=Next_Will_Be_Data;
 
 	for(k=0; k<8; k++)
@@ -160,6 +162,8 @@ void delete_RAM(void)
 		go_to_col_page(0, k);
 		HAL_I2C_Master_Transmit(&hi2c2, (uint16_t)Disp_Addr, tmp, pixels_y+1, 1000);
 	}
+
+	free(tmp);
 }
 
 void oled_send_cmd(uint8_t cmd)

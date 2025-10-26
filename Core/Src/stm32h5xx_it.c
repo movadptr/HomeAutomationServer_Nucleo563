@@ -61,6 +61,7 @@ extern TIM_HandleTypeDef htim6;
 
 /* USER CODE BEGIN EV */
 
+
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -187,6 +188,24 @@ void FLASH_IRQHandler(void)
   /* USER CODE BEGIN FLASH_IRQn 1 */
 
   /* USER CODE END FLASH_IRQn 1 */
+}
+
+/**
+  * @brief This function handles EXTI Line3 interrupt.
+  */
+void EXTI3_IRQHandler(void)
+{
+  /* USER CODE BEGIN EXTI3_IRQn 0 */
+
+  /* USER CODE END EXTI3_IRQn 0 */
+
+  /* USER CODE BEGIN EXTI3_IRQn 1 */
+	__HAL_GPIO_EXTI_CLEAR_RISING_IT(GPIO_PIN_3);
+	__HAL_GPIO_EXTI_CLEAR_FALLING_IT(GPIO_PIN_3);
+
+
+
+  /* USER CODE END EXTI3_IRQn 1 */
 }
 
 /**

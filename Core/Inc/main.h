@@ -42,7 +42,7 @@ extern "C" {
 #include "SSD1315_128x64_Oled.h"
 #include "Fonts_and_bitmaps_FLASH.h"
 #include "disp_fgv.h"
-#include "node.h"
+#include "master_node.h"
 
 #include "time.h"
 /* USER CODE END Includes */
@@ -53,6 +53,7 @@ typedef struct
 {
 	float temperature_server;
 	time_t last_action_timestamp;
+	char* time_update_after_boot_timestamp;
 	uint8_t screen_state;
 } HAdata_S;
 
@@ -150,6 +151,9 @@ int8_t check_alarm(uint32_t current_time, uint32_t* HAalarms_F, int8_t start_ind
 #define SWCLK_GPIO_Port GPIOA
 #define T_JTDI_Pin GPIO_PIN_15
 #define T_JTDI_GPIO_Port GPIOA
+#define FRNTDRSW_Pin GPIO_PIN_3
+#define FRNTDRSW_GPIO_Port GPIOD
+#define FRNTDRSW_EXTI_IRQn EXTI3_IRQn
 #define RMII_TXT_EN_Pin GPIO_PIN_11
 #define RMII_TXT_EN_GPIO_Port GPIOG
 #define RMI_TXD0_Pin GPIO_PIN_13

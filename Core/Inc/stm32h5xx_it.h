@@ -54,6 +54,7 @@ void UsageFault_Handler(void);
 void DebugMon_Handler(void);
 void RTC_IRQHandler(void);
 void FLASH_IRQHandler(void);
+void EXTI3_IRQHandler(void);
 void EXTI13_IRQHandler(void);
 void TIM6_IRQHandler(void);
 void ETH_IRQHandler(void);
