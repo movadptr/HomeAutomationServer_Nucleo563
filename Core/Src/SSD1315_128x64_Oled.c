@@ -191,13 +191,13 @@ void oled_send_data(uint8_t data)
 
 void go_to_col_page(uint8_t x, uint8_t y)
 {
-	if((x >= 0) && (x <= 127))
+	if(x <= 127)
 	{
 		oled_send_cmd(CMD_Set_Column_Address);
 		oled_send_cmd(x);
 		oled_send_cmd(127);
 	}	else{}
-	if((y >= 0) && (y <= 7))
+	if(y <= 7)
 	{
 		oled_send_cmd(CMD_Set_Page_Address);
 		oled_send_cmd(y);

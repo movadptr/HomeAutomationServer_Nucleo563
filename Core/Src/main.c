@@ -70,15 +70,15 @@ UART_HandleTypeDef huart2;
 /* USER CODE BEGIN PV */
 float PrevTemp_ROOM;
 
-HAdata_S HAdata = {0};
+volatile HAdata_S HAdata = {0};
 
 uint32_t HAalarms[HA_ALARM_LEN] = {0};
 uint8_t CurrentAlarm = 0;
 
 extern TX_SEMAPHORE HTTPSSemaphore;
 
-extern uint8_t** node_capabilities_pp;
-extern uint32_t** node_data_pp;
+extern volatile uint8_t** node_capabilities_pp;
+extern volatile uint32_t** node_data_pp;
 
 /* USER CODE END PV */
 
@@ -756,6 +756,7 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 													break;
 					case HA_SHADER_ALARM_EVENING:	N_WriteEveryRelevantNode(N_EAST_SHADER, N_SHADER_CLOSED_POS, &node_capabilities_pp, &node_data_pp);
 													break;
+					default: break;
 				}
 			}
 		}

@@ -73,15 +73,15 @@
 void sec_timer_interrupt_callback(void);								
 
 int N_MasterHandleRxData(uint8_t* rxbuff, uint8_t rxlen, uint32_t* node_data_p, uint8_t* capabilitiesf_p);
-void N_MasterStoreCapabilities(uint8_t* rxbuff, uint8_t rxlen, uint8_t*** capabilitiesf_ppp, uint8_t addr, uint32_t*** node_data_ppp);
-void N_MasterInitNodeNetwork(uint8_t*** capabilitiesf_ppp, uint32_t*** node_data_ppp);
+void N_MasterStoreCapabilities(uint8_t* rxbuff, uint8_t rxlen, volatile uint8_t*** capabilitiesf_ppp, uint8_t addr, volatile uint32_t*** node_data_ppp);
+void N_MasterInitNodeNetwork(volatile uint8_t*** capabilitiesf_ppp, volatile uint32_t*** node_data_ppp);
 void N_WriteNode(uint8_t nodeaddr, uint8_t function, uint32_t data);
-void N_MasterReadFirstRelevantNodeData(uint8_t function, uint32_t** data, uint8_t*** capabilities_ppp, uint32_t*** node_data_ppp);
-void N_WriteEveryRelevantNode(uint8_t function, uint32_t data, uint8_t*** capabilities_ppp, uint32_t*** node_data_ppp);
-void N_MasterRefreshAllNodeData(uint8_t*** capabilities_ppp, uint32_t*** node_data_ppp);
+void N_MasterReadFirstRelevantNodeData(uint8_t function, volatile uint32_t** data, volatile uint8_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp);
+void N_WriteEveryRelevantNode(uint8_t function, uint32_t data, volatile uint8_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp);
+void N_MasterRefreshAllNodeData(volatile uint8_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp);
 
 int N_AppendTxBuff(uint8_t* txbuff, uint8_t* offset, uint8_t* data, uint8_t datalen);
-void N_MasterGetFirstRelevantNodeData(uint8_t function, uint32_t* data, uint8_t*** capabilities_ppp, uint32_t*** node_data_ppp);
+void N_MasterGetFirstRelevantNodeData(uint8_t function, uint32_t* data, volatile uint8_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp);
 int N_GetNodeData(uint32_t* nd, uint32_t* data, uint8_t data_type, const uint8_t* capabilitiesf);
 int N_StoreNodeData(uint32_t* nd, uint32_t data, uint8_t data_type, const uint8_t* capabilitiesf, volatile uint8_t* datachangef);
 

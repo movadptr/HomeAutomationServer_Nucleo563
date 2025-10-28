@@ -13,8 +13,8 @@
 ///variables//////////////////////////////////////////////////
 
 extern UART_HandleTypeDef huart2;
-uint8_t** node_capabilities_pp = NULL;
-uint32_t** node_data_pp = NULL;
+volatile uint8_t** node_capabilities_pp = NULL;
+volatile uint32_t** node_data_pp = NULL;
 
 ///functions//////////////////////////////////////////////////
 
@@ -24,7 +24,7 @@ void N_WriteNode(uint8_t nodeaddr, uint8_t function, uint32_t data)
 	HAL_UART_Transmit(&huart2, txdata, 8, 100);
 }
 
-void N_WriteEveryRelevantNode(uint8_t function, uint32_t data, uint8_t*** capabilities_ppp, uint32_t*** node_data_ppp)
+void N_WriteEveryRelevantNode(uint8_t function, uint32_t data, volatile uint8_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp)
 {
 	uint8_t txdata[16] = {0x00, N_ADDR_MSB, N_CMD_WRITE, N_DATA_MSB, function, N_DATA_MSB, (uint8_t)((data>>0)&0xff), N_DATA_MSB, (uint8_t)((data>>8)&0xff), N_DATA_MSB, (uint8_t)((data>>16)&0xff), N_DATA_MSB, (uint8_t)((data>>24)&0xff), N_DATA_MSB, 0xff, 0x01};
 
@@ -45,7 +45,7 @@ void N_WriteEveryRelevantNode(uint8_t function, uint32_t data, uint8_t*** capabi
 /*
  * Reads the first node in the node list which has the given function
  */
-void N_MasterReadFirstRelevantNodeData(uint8_t function, uint32_t** data, uint8_t*** capabilities_ppp, uint32_t*** node_data_ppp)
+void N_MasterReadFirstRelevantNodeData(uint8_t function, volatile uint32_t** data, volatile uint8_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp)
 {
 	uint8_t txdata[16] = {0x00, N_ADDR_MSB, N_CMD_READ, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0xff, 0x01};
 	uint8_t* rxdata = calloc(N_MAX_RX_BUFF, sizeof(uint8_t));
@@ -73,7 +73,7 @@ void N_MasterReadFirstRelevantNodeData(uint8_t function, uint32_t** data, uint8_
 	free(rxdata);
 }
 
-void N_MasterRefreshAllNodeData(uint8_t*** capabilities_ppp, uint32_t*** node_data_ppp)
+void N_MasterRefreshAllNodeData(volatile uint8_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp)
 {
 	//kell egy mutex
 	uint8_t txdata[16] = {0x00, N_ADDR_MSB, N_CMD_READ, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0xff, 0x01};
@@ -127,7 +127,7 @@ int N_MasterHandleRxData(uint8_t* rxbuff, uint8_t rxlen, uint32_t* node_data_p, 
 	return 0;
 }
 
-void N_MasterInitNodeNetwork(uint8_t*** capabilitiesf_ppp, uint32_t*** node_data_ppp)
+void N_MasterInitNodeNetwork(volatile uint8_t*** capabilitiesf_ppp, volatile uint32_t*** node_data_ppp)
 {
 	uint8_t addr = 0;
 
@@ -136,10 +136,10 @@ void N_MasterInitNodeNetwork(uint8_t*** capabilitiesf_ppp, uint32_t*** node_data
 	uint8_t rxlen = 0;
 
 	//allocate mem for capabilities
-	*capabilitiesf_ppp = (uint8_t**)calloc(N_NODE_AMOUNT, sizeof(uint8_t*));
+	*capabilitiesf_ppp = (volatile uint8_t**)calloc(N_NODE_AMOUNT, sizeof(volatile uint8_t*));
 	if(*capabilitiesf_ppp == NULL)	{ Error_Handler();}
 	//allocate mem for data
-	*node_data_ppp = (uint32_t**)calloc(N_NODE_AMOUNT, sizeof(uint32_t*));
+	*node_data_ppp = (volatile uint32_t**)calloc(N_NODE_AMOUNT, sizeof(volatile uint32_t*));
 	if(*node_data_ppp == NULL)	{ Error_Handler();}
 
 
@@ -154,7 +154,7 @@ void N_MasterInitNodeNetwork(uint8_t*** capabilitiesf_ppp, uint32_t*** node_data
 	free(rx);
 }
 
-void N_MasterStoreCapabilities(uint8_t* rxbuff, uint8_t rxlen, uint8_t*** capabilitiesf_ppp, uint8_t addr, uint32_t*** node_data_ppp)
+void N_MasterStoreCapabilities(uint8_t* rxbuff, uint8_t rxlen, volatile uint8_t*** capabilitiesf_ppp, uint8_t addr, volatile uint32_t*** node_data_ppp)
 {
 	uint8_t clen = ((rxlen-4)/2);//(((rxlen-6)/2)+1);//-2 master addr, -2 cmd, -2 terminating idle word, /2 because every word is 2 byte, +1 termination zero in capabilities
 
@@ -203,7 +203,7 @@ int N_AppendTxBuff(uint8_t* txbuff, uint8_t* offset, uint8_t* data, uint8_t data
 /*
  * Reads the first node data in the local variable structure which has the given function
  */
-void N_MasterGetFirstRelevantNodeData(uint8_t function, uint32_t* data, uint8_t*** capabilities_ppp, uint32_t*** node_data_ppp)
+void N_MasterGetFirstRelevantNodeData(uint8_t function, uint32_t* data, volatile uint8_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp)
 {
 	for(uint8_t nodeindx=0; nodeindx<N_NODE_AMOUNT; nodeindx++)
 	{

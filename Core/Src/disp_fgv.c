@@ -138,6 +138,7 @@ uint8_t write_dec_num_float_V(uint8_t col, uint8_t row, float num, uint8_t digit
 {
 	uint8_t i=0, numt[9]={0}, start_col=col, neg=0;
 	if(num != fabs(num))
+	//floating point num has sign bit, so besides that bit, the value won't change thus this makes no problem
 	{
 		num=fabs(num);
 		neg=1;
@@ -197,7 +198,7 @@ uint8_t write_dec_num_float_V(uint8_t col, uint8_t row, float num, uint8_t digit
 uint8_t write_dec_num_time_format_V(uint8_t col, uint8_t row, uint8_t num, uint8_t Pixel_Status, uint8_t size, uint8_t align)
 {//egy nullát rak a szám elé ha a szám kisebb mint 10
 	uint8_t i=0, numt[2]={0};
-	num=num&0b0111111;
+	num = (num&0x3f);//0b00111111;
 	numt[0]=((num/10)%10);
 	numt[1]=((num/1)%10);
 	if(align==ALIGN_RIGHT)//annyival arrébb kezdjük balra kiírni amennyi pixel széles a számsor elválasztó oszlopokkal együtt
@@ -446,7 +447,7 @@ uint8_t write_character_V(uint8_t start_col, uint8_t start_row, char character, 
 			{
 				if(Pixel_Status==Pixel_on)
 				{
-					if( ( *(_5x8chars+firstcharbyte+xi) >> yi) & 0b1)
+					if( ( *(_5x8chars+firstcharbyte+xi) >> yi) & 0x01)
 					{
 						setpixel(col,row,Pixel_on);
 					}
@@ -457,7 +458,7 @@ uint8_t write_character_V(uint8_t start_col, uint8_t start_row, char character, 
 				}
 				else if(Pixel_Status==Pixel_off)
 				{
-					if( ( *(_5x8chars+firstcharbyte+xi) >> yi) & 0b1)
+					if( ( *(_5x8chars+firstcharbyte+xi) >> yi) & 0x01)
 					{
 						setpixel(col,row,Pixel_off);
 					}
@@ -481,7 +482,7 @@ uint8_t write_character_V(uint8_t start_col, uint8_t start_row, char character, 
 				{
 					if(Pixel_Status==Pixel_on)
 					{
-						if( ( *(_10x16chars+firstcharbyte+(chr_half*10)+xi) >> yi) & 0b1)
+						if( ( *(_10x16chars+firstcharbyte+(chr_half*10)+xi) >> yi) & 0x01)
 						{
 							setpixel(col,row,Pixel_on);
 						}
@@ -492,7 +493,7 @@ uint8_t write_character_V(uint8_t start_col, uint8_t start_row, char character, 
 					}
 					else if(Pixel_Status==Pixel_off)
 					{
-						if( ( *(_10x16chars+firstcharbyte+(chr_half*10)+xi) >> yi) & 0b1)
+						if( ( *(_10x16chars+firstcharbyte+(chr_half*10)+xi) >> yi) & 0x01)
 						{
 							setpixel(col,row,Pixel_off);
 						}
@@ -570,6 +571,7 @@ uint8_t write_dec_num_float_H(uint8_t col, uint8_t row, float num, uint8_t digit
 {
 	uint8_t i=0, numt[9]={0}, start_col=col, neg=0;
 	if(num != fabs(num))
+	//floating point num has sign bit, so besides that bit, the value won't change thus this makes no problem
 	{
 		num=fabs(num);
 		neg=1;
@@ -880,7 +882,7 @@ uint8_t write_character_H(uint8_t start_col, uint8_t start_row, char character, 
 			{
 				if(Pixel_Status==Pixel_on)
 				{
-					if( ( *(_5x8chars+firstcharbyte+xi) >> yi) & 0b1)
+					if( ( *(_5x8chars+firstcharbyte+xi) >> yi) & 0x01)
 					{
 						setpixel(pixels_x-1-row,col,Pixel_on);
 					}
@@ -891,7 +893,7 @@ uint8_t write_character_H(uint8_t start_col, uint8_t start_row, char character, 
 				}
 				else if(Pixel_Status==Pixel_off)
 				{
-					if( ( *(_5x8chars+firstcharbyte+xi) >> yi) & 0b1)
+					if( ( *(_5x8chars+firstcharbyte+xi) >> yi) & 0x01)
 					{
 						setpixel(pixels_x-1-row,col,Pixel_off);
 					}
@@ -915,7 +917,7 @@ uint8_t write_character_H(uint8_t start_col, uint8_t start_row, char character, 
 				{
 					if(Pixel_Status==Pixel_on)
 					{
-						if( ( *(_10x16chars+firstcharbyte+(chr_half*10)+xi) >> yi) & 0b1)
+						if( ( *(_10x16chars+firstcharbyte+(chr_half*10)+xi) >> yi) & 0x01)
 						{
 							setpixel(pixels_x-1-row,col,Pixel_on);
 						}
@@ -926,7 +928,7 @@ uint8_t write_character_H(uint8_t start_col, uint8_t start_row, char character, 
 					}
 					else if(Pixel_Status==Pixel_off)
 					{
-						if( ( *(_10x16chars+firstcharbyte+(chr_half*10)+xi) >> yi) & 0b1)
+						if( ( *(_10x16chars+firstcharbyte+(chr_half*10)+xi) >> yi) & 0x01)
 						{
 							setpixel(pixels_x-1-row,col,Pixel_off);
 						}
@@ -982,6 +984,8 @@ void character_info( char characterf, uint8_t size)
 								while( (*(_10x16chars+firstcharbyte+ind) != 0xCC) && (ind<10) )	{ ind++;}
 								charwidth = ind;
 								break;
+
+			default: break;
 		}
 	}else{}
 }
@@ -1038,7 +1042,7 @@ void draw_line_x(uint8_t x1, uint8_t x2,uint8_t y, uint8_t pixel_status)
 
 void setpixel(uint8_t x, uint8_t y, uint8_t Pixel_status)
 {
-	if(((x>=0)&&(x<pixels_x))&&((y>=0)&&(y<pixels_y)))
+	if((x<pixels_x)&&(y<pixels_y))
 	{
 		uint8_t page=0,dotinpage=0;
 		page=x/8;

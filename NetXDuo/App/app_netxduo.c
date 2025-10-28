@@ -78,11 +78,9 @@ struct 					tm timeInfos;
 RTC_HandleTypeDef 		RtcHandle;
 UINT  					iface_index = 0;//set the SNTP network interface to the primary interface.
 
-extern UART_HandleTypeDef huart2;
-extern uint8_t** node_capabilities_pp;
-extern uint32_t** node_data_pp;
+extern volatile uint8_t** node_capabilities_pp;
+extern volatile uint32_t** node_data_pp;
 
-extern RTC_HandleTypeDef hrtc;
 uint8_t time_update_after_boot_flag = 0;
 
 TX_SEMAPHORE HTTPSSemaphore;
@@ -102,7 +100,8 @@ static NX_SECURE_X509_CERT trusted_certificate;
 extern const unsigned int gts_root_r1_der_len;
 extern unsigned char gts_root_r1_der[1371];
 static NX_SECURE_X509_CERT trusted_certificate;
-static NX_SECURE_X509_CERT remote_certificate, remote_issuer;
+static NX_SECURE_X509_CERT remote_certificate;
+NX_SECURE_X509_CERT remote_issuer;
 static UCHAR remote_cert_buffer[18000];
 static UCHAR remote_issuer_buffer[18000];
 extern NX_SECURE_TLS_CRYPTO nx_crypto_tls_ciphers;
@@ -364,6 +363,8 @@ UINT MX_NetXDuo_Init(VOID *memory_ptr)
 static VOID ip_address_change_notify_callback(NX_IP *ip_instance, VOID *ptr)
 {
   /* USER CODE BEGIN ip_address_change_notify_callback */
+	UNUSED(ip_instance);
+	UNUSED(ptr);
 	tx_semaphore_put(&DHCPSemaphore);
   /* USER CODE END ip_address_change_notify_callback */
 }
@@ -376,7 +377,7 @@ static VOID ip_address_change_notify_callback(NX_IP *ip_instance, VOID *ptr)
 static VOID App_Main_Thread_Entry (ULONG thread_input)
 {
   /* USER CODE BEGIN Nx_App_Thread_Entry 0 */
-
+  UNUSED(thread_input);
   /* USER CODE END Nx_App_Thread_Entry 0 */
 
   UINT ret = NX_SUCCESS;
@@ -452,7 +453,8 @@ static void App_SNTP_Thread_Entry(ULONG info)
 {
   UINT ret;
   RtcHandle.Instance = RTC;
-  ULONG  seconds, fraction;
+  ULONG  seconds;
+  ULONG fraction;
   ULONG  events = 0;
   UINT   server_status;
   NXD_ADDRESS sntp_server_ip;
@@ -582,9 +584,11 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
   ULONG bytes_read;
   UINT source_port;
 
-  UCHAR data_buffer[512];
+  UCHAR data_buffer[UDP_DATA_LEN];
   ULONG source_ip_address;
   NX_PACKET *data_packet;
+
+  UNUSED(thread_input);
 
   HAdata.time_update_after_boot_timestamp = NULL;
 
@@ -642,7 +646,7 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
 		if(strcmp((char*)data_buffer, HA_SECR_STR1) == 0)
 		{
 			char txstr[150]={0};
-			uint32_t* outtemp_p = NULL;
+			volatile uint32_t* outtemp_p = NULL;
 
 			N_MasterReadFirstRelevantNodeData(N_OUTSIDE_TEMPERATURE_SENSOR, &outtemp_p, &node_capabilities_pp, &node_data_pp);
 			/*union{float f; uint32_t u;}cnv;
@@ -701,7 +705,10 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
 static VOID App_Link_Thread_Entry(ULONG thread_input)
 {
   ULONG actual_status;
-  UINT linkdown = 0, status;
+  UINT linkdown = 0;
+  UINT status;
+
+  UNUSED(thread_input);
 
   while(1)
   {
@@ -925,7 +932,7 @@ static VOID App_HTTPS_Thread_Entry(ULONG thread_input)
 
 		{//get fdr info if changed //see comment is secr
 			uint32_t oldval = 0;
-			uint32_t* newval = NULL;
+			volatile uint32_t* newval = NULL;
 
 			N_MasterGetFirstRelevantNodeData(N_SECR_FDPS, &oldval, &node_capabilities_pp, &node_data_pp);
 			N_MasterReadFirstRelevantNodeData(N_SECR_FDPS, &newval, &node_capabilities_pp, &node_data_pp);
