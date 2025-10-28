@@ -588,6 +588,11 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
   ULONG source_ip_address;
   NX_PACKET *data_packet;
 
+  RTC_DateTypeDef RTC_Date = {0};
+  RTC_TimeTypeDef RTC_Time = {0};
+  char tmps[30]={0};
+  time_t tmp_ts;
+
   UNUSED(thread_input);
 
   HAdata.time_update_after_boot_timestamp = NULL;
@@ -617,31 +622,30 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
     TX_MEMSET(data_buffer, '\0', sizeof(data_buffer));
     ret = nx_udp_socket_receive(&UDPSocket, &data_packet, 100);//wait for data for 1 sec
 
+    //get time  date data from rtc
+	HAL_RTC_GetTime(&RtcHandle,&RTC_Time,RTC_FORMAT_BIN);
+	HAL_RTC_GetDate(&RtcHandle,&RTC_Date,RTC_FORMAT_BIN);
+	//store time data in different ways
+	tmp_ts =  get_local_rtc_time_date(&RTC_Date, &RTC_Time, tmps);
+
+	if(time_update_after_boot_flag == 1)
+	{
+		time_update_after_boot_flag = 0;
+		if(HAdata.time_update_after_boot_timestamp != NULL)//can't happen because after boot it should be empty but bab
+		{
+			free(HAdata.time_update_after_boot_timestamp);
+			HAdata.time_update_after_boot_timestamp = NULL;
+		}
+		HAdata.time_update_after_boot_timestamp = StrAllocAndCpy(tmps);
+	}
+
     if (ret == NX_SUCCESS)
     {
 		nx_packet_data_retrieve(data_packet, data_buffer, &bytes_read);//data is available, read it into the data buffer
 		nx_udp_source_extract(data_packet, &source_ip_address, &source_port);//get info about the client address and port
 		PRINT_DATA(source_ip_address, source_port, data_buffer);//print the client address, the remote port and the received data
 
-		RTC_DateTypeDef RTC_Date = {0};
-		RTC_TimeTypeDef RTC_Time = {0};
-		char tmps[30]={0};
-		//get time  date data from rtc
-		HAL_RTC_GetTime(&RtcHandle,&RTC_Time,RTC_FORMAT_BIN);
-		HAL_RTC_GetDate(&RtcHandle,&RTC_Date,RTC_FORMAT_BIN);
-		//store adjusted timestamp
-		HAdata.last_action_timestamp =  get_local_rtc_time_date(&RTC_Date, &RTC_Time, tmps);
-
-		if(time_update_after_boot_flag == 1)
-		{
-			time_update_after_boot_flag = 0;
-			if(HAdata.time_update_after_boot_timestamp != NULL)//can't happen because after boot it should be empty but bab
-			{
-				free(HAdata.time_update_after_boot_timestamp);
-				HAdata.time_update_after_boot_timestamp = NULL;
-			}
-			HAdata.time_update_after_boot_timestamp = StrAllocAndCpy(tmps);
-		}
+		HAdata.last_action_timestamp = tmp_ts;
 
 		if(strcmp((char*)data_buffer, HA_SECR_STR1) == 0)
 		{
