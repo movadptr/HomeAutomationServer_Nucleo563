@@ -1173,65 +1173,42 @@ UINT Http_request(HTTP_RSC_STRUCT* resources)
 		UINT get_status = NX_SUCCESS;
 		NX_PACKET *receive_packet = NULL;
 		CHAR *tmp_p = NULL;
-		UCHAR* receive_buffer = NULL;
+		UCHAR receive_buffer[NX_MAX_STRING_LENGTH];
 
 		while(get_status != NX_WEB_HTTP_GET_DONE)
 		{
-			receive_buffer = calloc(NX_MAX_STRING_LENGTH, 1);
-			if(receive_buffer == NULL)	{ Error_Handler();}
-
+			(void)memset(receive_buffer, 0x00, NX_MAX_STRING_LENGTH);
 			get_status = _nxe_web_http_client_response_body_get(&http_client, &receive_packet, NX_WAIT_FOREVER);
 
 			if((get_status == NX_SUCCESS) || (get_status == NX_WEB_HTTP_GET_DONE))
 			{
-				status = nx_packet_data_extract_offset(receive_packet, 0, receive_buffer, 1000, &bytes);
-				if(status)
-				{ Error_Handler();}
+				status = nx_packet_data_extract_offset(receive_packet, 0, receive_buffer, NX_MAX_STRING_LENGTH, &bytes);
+				if(status)	{ Error_Handler();}
 
-				if(bytes < NX_MAX_STRING_LENGTH)//make sure we have a null terminator
-				{
-					receive_buffer[bytes] = 0;
-					bytes++;
-				}
-				else
-				{
-					receive_buffer[NX_MAX_STRING_LENGTH-1] = 0;
-				}
+				//make sure we have a null terminator
+				if(bytes < NX_MAX_STRING_LENGTH)	{ receive_buffer[bytes] = 0;}//redundant because of the previous memset()
+				else{ receive_buffer[NX_MAX_STRING_LENGTH-1] = 0;}//theoretically can't happen but bab
 
-				{//mem juggling
-					if(resources->return_data_len != 0)//if there was data in the buffeer then we copy it to the newly allocated bigger tmp buffer
+				if(bytes>0)//if packet data part was somehow empty then do nothing
+				{
+					//mem juggling
+					if(resources->return_data_p == NULL)//first entry
 					{
-						tmp_p = calloc(bytes + resources->return_data_len + 1, 1);
-						if(tmp_p == NULL)	{ Error_Handler();}// mem allocation was not successful
-
-						if(resources->return_data_p != NULL)
-						{
-							memcpy(tmp_p, resources->return_data_p, resources->return_data_len);
-							free(resources->return_data_p);
-							resources->return_data_p = NULL;
-						}
+						resources->return_data_p = (CHAR*)calloc((size_t)bytes, 1);
+						//now resources->return_data_len is still 0, so the memcpy() will be ok
 					}
 					else
 					{
-						tmp_p = calloc(bytes, 1);
-						if(tmp_p == NULL)	{ Error_Handler();}// mem allocation was not successful
+						tmp_p = resources->return_data_p;//transfer pointer
+						resources->return_data_p = (CHAR*)realloc(tmp_p, (size_t)resources->return_data_len + bytes);//get bigger buff, also frees tmp_p
 					}
-
-					//copy the latest data to tmp buffer
-					memcpy(tmp_p+resources->return_data_len, receive_buffer, bytes);
-
-					resources->return_data_p = tmp_p;//transfer the pointer
-					resources->return_data_len += bytes;
-					tmp_p = NULL;
+					if(resources->return_data_p == NULL)	{ Error_Handler();}//alloc was not successful
+					(void)memcpy(resources->return_data_p + resources->return_data_len, receive_buffer, bytes);//copy the new data
+					resources->return_data_len += bytes;//set new len
 				}
 			}
-			else
-			{
-				Error_Handler();
-			}
+			else{ Error_Handler();}
 
-			free(receive_buffer);
-			receive_buffer = NULL;
 			if(receive_packet != NULL)
 			{
 				status = nx_packet_release(receive_packet);
@@ -1240,8 +1217,7 @@ UINT Http_request(HTTP_RSC_STRUCT* resources)
 		}
 	}
 
-	// Clear out the HTTP client when we are done.
-	status = _nxe_web_http_client_delete(&http_client);
+	(void)_nxe_web_http_client_delete(&http_client);// Clear out the HTTP client when we are done.
 
 	return NX_SUCCESS;
 }

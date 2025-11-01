@@ -38,6 +38,10 @@ ENTRY(Reset_Handler)
 /* Highest address of the user mode stack */
 _estack = ORIGIN(RAM) + LENGTH(RAM); /* end of "RAM" Ram type memory */
 
+
+_sheap = _eheap - _Min_Heap_Size; /* Start of heap */
+_eheap = _estack - _Min_Stack_Size; /* End of heap (before stack) */
+
 _Min_Heap_Size = 0x2400; /* required amount of heap */
 _Min_Stack_Size = 0x2400; /* required amount of stack */
 

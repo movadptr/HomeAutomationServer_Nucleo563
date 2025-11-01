@@ -93,7 +93,7 @@ static void MX_RTC_Init(void);
 static void MX_SPI5_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+void fill_stack_heap_w_pattern(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -107,9 +107,10 @@ static void MX_USART2_UART_Init(void);
   */
 int main(void)
 {
-
-  /* USER CODE BEGIN 1 */
-
+	/* USER CODE BEGIN 1 */
+#ifdef DEBUG
+	fill_stack_heap_w_pattern();
+#endif//DEBUG
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -962,6 +963,27 @@ time_t RTCDateTime2timestamp(RTC_DateTypeDef *RD, RTC_TimeTypeDef *RT)
 	return timestamp;
 }
 
+void fill_stack_heap_w_pattern(void)
+{
+	extern uint32_t _sheap;
+	extern uint32_t _eheap;
+	//extern uint32_t _estack;
+	#define FILL_PATTERN_STACK 0xAAAAAAAA
+	#define FILL_PATTERN_HEAP 0xBBBBBBBB
+	uint32_t *ptr;
+	//Fill heap
+	for (ptr = &_sheap; ptr < &_eheap; ptr++)
+	{
+		*ptr = FILL_PATTERN_HEAP;
+	}
+	//Fill unused stack (from current SP to _eheap/_sstack)
+	register uint32_t *sp asm("sp");
+	for (ptr = (sp-1); ptr > &_eheap; ptr--)
+	{
+		*ptr = FILL_PATTERN_STACK;
+	}
+}
+
 /* USER CODE END 4 */
 
 /**
@@ -994,7 +1016,9 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
+
   __disable_irq();
+
   while (1)
   {
 	  NVIC_SystemReset();
