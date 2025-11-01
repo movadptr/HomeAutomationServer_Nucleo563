@@ -729,12 +729,13 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 	//convert to local time
 	ts = get_local_rtc_time_date(&RTC_Date, &RTC_Time, TimS);
 
-
-
 	//alarm in every odd second
 	if(RTC_Time.Seconds & 0x01)
 	{
-		tx_semaphore_put(&HTTPSSemaphore);//start IP check and refresh
+		if(HAdata.time_update_after_boot_timestamp != NULL)//if this is a valid stuff then everything started correctly, and https can be started
+		{
+			tx_semaphore_put(&HTTPSSemaphore);//start IP check and refresh
+		}
 
 	}
 

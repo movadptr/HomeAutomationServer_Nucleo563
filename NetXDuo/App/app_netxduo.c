@@ -336,18 +336,19 @@ UINT MX_NetXDuo_Init(VOID *memory_ptr)
   	}
 
   	// Allocate the memory for https thread
-  	if (tx_byte_allocate(byte_pool, (VOID **) &pointer, 6* DEFAULT_MEMORY_SIZE, TX_NO_WAIT) != TX_SUCCESS)
+  	if (tx_byte_allocate(byte_pool, (VOID **) &pointer, 12* DEFAULT_MEMORY_SIZE, TX_NO_WAIT) != TX_SUCCESS)
   	{
   		return TX_POOL_ERROR;
   	}
   	// create the https thread
-  	ret = tx_thread_create(&AppHTTPSclientThread, "App HTTPS Thread", App_HTTPS_Thread_Entry, 0, pointer, 6 * DEFAULT_MEMORY_SIZE,
+  	ret = tx_thread_create(&AppHTTPSclientThread, "App HTTPS Thread", App_HTTPS_Thread_Entry, 0, pointer, 12 * DEFAULT_MEMORY_SIZE,
   							DEFAULT_PRIORITY, DEFAULT_PRIORITY, TX_NO_TIME_SLICE, TX_DONT_START);
   	if (ret != TX_SUCCESS)
   	{
   		return TX_THREAD_ERROR;
   	}
 
+  	tx_semaphore_create(&HTTPSSemaphore, "HTTPS_semaphore", 0);
 
   /* USER CODE END MX_NetXDuo_Init */
 
@@ -765,19 +766,15 @@ static VOID App_HTTPS_Thread_Entry(ULONG thread_input)
 	RTC_TimeTypeDef RTC_Time = {0};
 	char tmps[30]={0};
 
-	tx_semaphore_create(&HTTPSSemaphore, "HTTPS_semaphore", 0);
-
 	while(1)
 	{
 		//suspend thread and wait for semaphore put
 		tx_semaphore_get(&HTTPSSemaphore, NX_WAIT_FOREVER);
 
-
 		//get time  date data from rtc
 		HAL_RTC_GetTime(&RtcHandle,&RTC_Time,RTC_FORMAT_BIN);
 		HAL_RTC_GetDate(&RtcHandle,&RTC_Date,RTC_FORMAT_BIN);
 		get_local_rtc_time_date(&RTC_Date, &RTC_Time, tmps);
-
 
 		//get public IP
 		{
