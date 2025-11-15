@@ -136,6 +136,7 @@ void print_disp_mat(void)
 {
 	volatile uint8_t i=0, k=0;
 	uint8_t* tmp = calloc(pixels_y+1, sizeof(uint8_t));
+	if(tmp == NULL)	{ Error_Handler();}//calloc fail
 	tmp[0]=Next_Will_Be_Data;
 
 	for(k=0; k<8; k++)
@@ -149,12 +150,14 @@ void print_disp_mat(void)
 	}
 
 	free(tmp);
+	tmp = NULL;
 }
 
 void delete_RAM(void)
 {
 	volatile uint8_t k=0;
 	uint8_t* tmp = calloc(pixels_y+1, sizeof(uint8_t));
+	if(tmp == NULL)	{ Error_Handler();}//calloc fail
 	tmp[0]=Next_Will_Be_Data;
 
 	for(k=0; k<8; k++)
@@ -164,6 +167,7 @@ void delete_RAM(void)
 	}
 
 	free(tmp);
+	tmp = NULL;
 }
 
 void oled_send_cmd(uint8_t cmd)

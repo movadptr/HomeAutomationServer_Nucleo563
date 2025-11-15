@@ -80,6 +80,8 @@ extern TX_SEMAPHORE HTTPSSemaphore;
 extern volatile uint8_t** node_capabilities_pp;
 extern volatile uint32_t** node_data_pp;
 
+volatile uint8_t https_trigger_presc = 0;
+#define HTTPS_TRIG_PRESC_CMP 2U
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -729,9 +731,10 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 	//convert to local time
 	ts = get_local_rtc_time_date(&RTC_Date, &RTC_Time, TimS);
 
-	//alarm in every odd second
-	if(RTC_Time.Seconds & 0x01)
+	https_trigger_presc ++;
+	if(https_trigger_presc >= HTTPS_TRIG_PRESC_CMP)
 	{
+		https_trigger_presc = 0;
 		if(HAdata.time_update_after_boot_timestamp != NULL)//if this is a valid stuff then everything started correctly, and https can be started
 		{
 			tx_semaphore_put(&HTTPSSemaphore);//start IP check and refresh
@@ -770,7 +773,7 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 	{
 #ifdef DEBUG
 		printf("%s\n\r", TimS);
-		printf("Room temperature= %f\n\r", HAdata.temperature_server);
+		printf("Server temperature= %f\n\r", HAdata.temperature_server);
 #endif
 
 		if( (ts < (HAdata.last_action_timestamp+10)))
@@ -816,7 +819,7 @@ int8_t check_alarm(uint32_t current_time, uint32_t* HAalarms_F, int8_t start_ind
 	while(start_indx < HA_ALARM_LEN)
 	{
 #ifdef DEBUG
-		printf("___%li___%li___\n\r",HAalarms_F[start_indx], current_time);
+		printf("alarm[%i]___%li___%li___\n\r",start_indx, HAalarms_F[start_indx], current_time);
 #endif
 		if(HAalarms_F[start_indx] == current_time)
 		{

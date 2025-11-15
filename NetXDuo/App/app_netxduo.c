@@ -550,12 +550,8 @@ static void App_SNTP_Thread_Entry(ULONG info)
   rtc_time_update(&SntpClient.nx_sntp_current_server_time_message, NULL);
 
 
-  //TODO set first closest alarm
-
-
-
   // Enable the Alarm B interrupt
-  SET_BIT(RTC->CR, RTC_CR_ALRBE | RTC_CR_ALRBIE);
+  //SET_BIT(RTC->CR, RTC_CR_ALRBE | RTC_CR_ALRBIE);
 
   /*
   // We can stop the SNTP service if for example we think the SNTP server has stopped sending updates
@@ -638,6 +634,7 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
 			HAdata.time_update_after_boot_timestamp = NULL;
 		}
 		HAdata.time_update_after_boot_timestamp = StrAllocAndCpy(tmps);
+		HAdata.last_action_timestamp = tmp_ts;
 	}
 
     if (ret == NX_SUCCESS)
@@ -650,14 +647,31 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
 
 		if(strcmp((char*)data_buffer, HA_SECR_STR1) == 0)
 		{
-			char txstr[150]={0};
-			volatile uint32_t* outtemp_p = NULL;
+			char txstr[200]={0};
+			volatile uint32_t* temperature_p = NULL;
+			float TempOut=0, TempRoom1 = 0, TempRoom2 = 0;
+			union{float f; uint32_t u;}cnv;
 
-			N_MasterReadFirstRelevantNodeData(N_OUTSIDE_TEMPERATURE_SENSOR, &outtemp_p, &node_capabilities_pp, &node_data_pp);
-			/*union{float f; uint32_t u;}cnv;
-			if(outtemp_p != NULL)	{ cnv.u = (*outtemp_p);}
-								else{ cnv.u = 0;}//error*/
-			sprintf(txstr,"INFO_Server datetime:\t\t%s\nServer temp:\t\t%.2f°C\nBoot datetime:\t\t%s",tmps, HAdata.temperature_server, HAdata.time_update_after_boot_timestamp!=0?HAdata.time_update_after_boot_timestamp:"no_ts");
+			N_MasterReadFirstRelevantNodeData(N_OUTSIDE_TEMPERATURE_SENSOR, &temperature_p, &node_capabilities_pp, &node_data_pp);
+			if(temperature_p != NULL)	{ cnv.u = *(temperature_p);}
+			else{ cnv.u = 0;}
+			TempOut = cnv.f;
+
+			N_MasterReadFirstRelevantNodeData(N_ROOM_TEMPERATURE_SENSOR, &temperature_p, &node_capabilities_pp, &node_data_pp);
+			if(temperature_p != NULL)	{ cnv.u = *(temperature_p);}
+			else{ cnv.u = 0;}
+			TempRoom1 = cnv.f;
+
+			N_MasterReadNodeData(2, N_ROOM_TEMPERATURE_SENSOR, &cnv.u);
+			TempRoom2 = cnv.f;
+
+			sprintf(txstr,"INFO_Server datetime:\t%s\nBoot datetime:\t\t\t%s\nServer temp:\t%.2f°C\nRoom temp1:\t\t%.2f°C\nRoom temp2:\t\t%.2f°C\nOut temp:\t\t\t\t%.2f°C",
+					tmps,
+					HAdata.time_update_after_boot_timestamp!=0?HAdata.time_update_after_boot_timestamp:"no_ts",
+					HAdata.temperature_server,
+					TempRoom1,
+					TempRoom2,
+					TempOut);
 
 			ret = createAndSendUDPPacket(source_ip_address, source_port, txstr);
 		}
@@ -931,7 +945,7 @@ static VOID App_HTTPS_Thread_Entry(ULONG thread_input)
 			}
 		}
 
-		{//get fdr info if changed //see comment is secr
+		{//get fdr info if changed //see comment in secr
 			uint32_t oldval = 0;
 			volatile uint32_t* newval = NULL;
 
@@ -1120,13 +1134,11 @@ UINT Http_request(HTTP_RSC_STRUCT* resources)
 
 	//Look up Server address
 	status = nx_dns_host_by_name_get(&DnsClient, (UCHAR*)(resources->hostURL), &(resources->server_ip_address.nxd_ip_address.v4), NX_IP_PERIODIC_RATE);
-	//Check status.
-	if(status != NX_SUCCESS)
-	{ return status;}
+	if(status != NX_SUCCESS) { return status;}
 
 	//Create an HTTP client instance.
 	status = _nxe_web_http_client_create(&http_client, "HTTP Client", &NetXDuoEthIpInstance, &NxAppPool, 1536, sizeof(http_client));
-
+	if(status != NX_SUCCESS) { return status;}
 #ifdef DEBUG
 	//Set the header callback routine.
 	//_nxe_web_http_client_response_header_callback_set(&http_client, http_response_callback);
@@ -1145,8 +1157,11 @@ UINT Http_request(HTTP_RSC_STRUCT* resources)
 																						resources->resource, resources->hostURL,
 																						NULL, NULL, (ULONG)strlen(resources->resource_content),
 																						tls_setup_callback, NX_WAIT_FOREVER);
+										if(status != NX_SUCCESS) { (void)_nxe_web_http_client_delete(&http_client); return status;}
 										status = _nxe_web_http_client_request_packet_allocate(&http_client, &resource_content_packet, NX_WAIT_FOREVER);
+										if(status != NX_SUCCESS) { (void)_nxe_web_http_client_delete(&http_client); return status;}
 										status = nx_packet_data_append(resource_content_packet, resources->resource_content, strlen(resources->resource_content), &NxAppPool, NX_WAIT_FOREVER);
+										if(status != NX_SUCCESS) { (void)_nxe_web_http_client_delete(&http_client); return status;}
 										status = _nxe_web_http_client_put_packet(&http_client, resource_content_packet, NX_WAIT_FOREVER);
 										break;
 
@@ -1159,16 +1174,13 @@ UINT Http_request(HTTP_RSC_STRUCT* resources)
 	}
 
 	//Check status.
-	if(status != NX_SUCCESS)
-	{
-		return status;
-	}
+	if(status != NX_SUCCESS) { (void)_nxe_web_http_client_delete(&http_client); return status;}
 
 	//put and patch normally does not give response
 	if(resources->method == NX_WEB_HTTP_METHOD_GET)
 	{
 		UINT get_status = NX_SUCCESS;
-		NX_PACKET *receive_packet = NULL;
+		NX_PACKET *receive_packet = NX_NULL;
 		CHAR *tmp_p = NULL;
 		UCHAR receive_buffer[NX_MAX_STRING_LENGTH];
 
@@ -1180,7 +1192,7 @@ UINT Http_request(HTTP_RSC_STRUCT* resources)
 			if((get_status == NX_SUCCESS) || (get_status == NX_WEB_HTTP_GET_DONE))
 			{
 				status = nx_packet_data_extract_offset(receive_packet, 0, receive_buffer, NX_MAX_STRING_LENGTH, &bytes);
-				if(status)	{ Error_Handler();}
+				if(status)	{ (void)_nxe_web_http_client_delete(&http_client); return status;}
 
 				//make sure we have a null terminator
 				if(bytes < NX_MAX_STRING_LENGTH)	{ receive_buffer[bytes] = 0;}//redundant because of the previous memset()
@@ -1192,7 +1204,7 @@ UINT Http_request(HTTP_RSC_STRUCT* resources)
 					if(resources->return_data_p == NULL)//first entry
 					{
 						resources->return_data_p = (CHAR*)calloc((size_t)bytes, 1);
-						//now resources->return_data_len is still 0, so the memcpy() will be ok
+						//now resources->return_data_len is still 0, so the memmove() will be ok
 					}
 					else
 					{
@@ -1200,16 +1212,16 @@ UINT Http_request(HTTP_RSC_STRUCT* resources)
 						resources->return_data_p = (CHAR*)realloc(tmp_p, (size_t)resources->return_data_len + bytes);//get bigger buff, also frees tmp_p
 					}
 					if(resources->return_data_p == NULL)	{ Error_Handler();}//alloc was not successful
-					(void)memcpy(resources->return_data_p + resources->return_data_len, receive_buffer, bytes);//copy the new data
+					(void)memmove(resources->return_data_p + resources->return_data_len, receive_buffer, bytes);//copy the new data
 					resources->return_data_len += bytes;//set new len
 				}
 			}
-			else{ Error_Handler();}
+			else{ (void)_nxe_web_http_client_delete(&http_client); return get_status;}
 
-			if(receive_packet != NULL)
+			if(receive_packet != NX_NULL)
 			{
 				status = nx_packet_release(receive_packet);
-				receive_packet = NULL;
+				receive_packet = NX_NULL;
 			}
 		}
 	}
@@ -1239,8 +1251,8 @@ VOID http_response_callback(NX_WEB_HTTP_CLIENT *client_ptr, CHAR *field_name, UI
     memset(name, 0, sizeof(name));
     memset(value, 0, sizeof(value));
 
-    memcpy(name, field_name, field_name_length);//Use case of memcpy is verified.
-    memcpy(value, field_value, field_value_length);//Use case of memcpy is verified.
+    memmove(name, field_name, field_name_length);//Use case of memcpy is verified.
+    memmove(value, field_value, field_value_length);//Use case of memcpy is verified.
 
     printf("Received https header: \n\rField name: %s (%d bytes)\n\rValue: %s (%d bytes)\n\r--------------\n\r", name, field_name_length, value, field_value_length);
 }
@@ -1287,6 +1299,7 @@ UINT createAndSendUDPPacket(ULONG ip_address, UINT port, char* data)
 {
 	UINT ret = 0;
 	char* data_buffer = calloc(UDP_DATA_LEN, sizeof(char));
+	if(data_buffer == NULL)	{ Error_Handler();}//calloc fail
 
 	NX_PACKET *data_packet;
 
@@ -1311,6 +1324,8 @@ UINT createAndSendUDPPacket(ULONG ip_address, UINT port, char* data)
 	ret = nx_udp_socket_send(&UDPSocket, data_packet, ip_address, port);
 
 	free(data_buffer);
+	data_buffer = NULL;
+
 	return ret;
 }
 

@@ -18,12 +18,49 @@ volatile uint32_t** node_data_pp = NULL;
 
 ///functions//////////////////////////////////////////////////
 
-void N_WriteNode(uint8_t nodeaddr, uint8_t function, uint32_t data)
+/*
+ * desc: writes to the node in the given address
+ */
+int8_t N_MasterWriteNodeData(uint8_t nodeaddr, uint8_t function, uint32_t data)
 {
+	if((nodeaddr == 0) || (nodeaddr > N_NODE_AMOUNT))//bad addr
+	{
+		return -1;
+	}
+
 	uint8_t txdata[16] = {nodeaddr, N_ADDR_MSB, N_CMD_WRITE, N_DATA_MSB, function, N_DATA_MSB, (uint8_t)((data>>0)&0xff), N_DATA_MSB, (uint8_t)((data>>8)&0xff), N_DATA_MSB, (uint8_t)((data>>16)&0xff), N_DATA_MSB, (uint8_t)((data>>24)&0xff), N_DATA_MSB, 0xff, 0x01};
 	HAL_UART_Transmit(&huart2, txdata, 8, 100);
+
+	return 0;
 }
 
+/*
+ * desc: Reads from the firs node in the given address
+ */
+int8_t N_MasterReadNodeData(uint8_t nodeaddr, uint8_t function, volatile uint32_t* data)
+{
+	if((nodeaddr == 0) || (nodeaddr > N_NODE_AMOUNT))//bad addr
+	{
+		return -1;
+	}
+
+	uint8_t txdata[16] = {nodeaddr, N_ADDR_MSB, N_CMD_READ, N_DATA_MSB, function, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0xff, 0x01};
+	uint16_t rxlen = 0;
+	uint8_t* rxdata = calloc(N_MAX_RX_BUFF, sizeof(uint8_t));
+	if(rxdata == NULL)	{ Error_Handler();}//calloc fail
+
+	HAL_UART_Transmit(&huart2, txdata, 8, 100);
+	HAL_UARTEx_ReceiveToIdle(&huart2, rxdata, N_MAX_RX_BUFF, &rxlen, 1000);
+	*data = ((rxdata[6]<<0) | (rxdata[8]<<8) | (rxdata[10]<<16) | (rxdata[12]<<24));//save received data
+
+	free(rxdata);
+	rxdata = NULL;
+	return 0;
+}
+
+/*
+ * desc: Writes to the first node in the node list which has the given function
+ */
 void N_WriteEveryRelevantNode(uint8_t function, uint32_t data, volatile uint8_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp)
 {
 	uint8_t txdata[16] = {0x00, N_ADDR_MSB, N_CMD_WRITE, N_DATA_MSB, function, N_DATA_MSB, (uint8_t)((data>>0)&0xff), N_DATA_MSB, (uint8_t)((data>>8)&0xff), N_DATA_MSB, (uint8_t)((data>>16)&0xff), N_DATA_MSB, (uint8_t)((data>>24)&0xff), N_DATA_MSB, 0xff, 0x01};
@@ -43,13 +80,14 @@ void N_WriteEveryRelevantNode(uint8_t function, uint32_t data, volatile uint8_t*
 }
 
 /*
- * Reads the first node in the node list which has the given function
+ * desc: Reads from the first node in the node list which has the given function
  */
 void N_MasterReadFirstRelevantNodeData(uint8_t function, volatile uint32_t** data, volatile uint8_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp)
 {
 	uint8_t txdata[16] = {0x00, N_ADDR_MSB, N_CMD_READ, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0xff, 0x01};
+	uint16_t rxlen = 0;
 	uint8_t* rxdata = calloc(N_MAX_RX_BUFF, sizeof(uint8_t));
-	uint16_t rxlen= 0;
+	if(rxdata == NULL)	{ Error_Handler();}//calloc fail
 
 	for(uint8_t nodeindx=0; nodeindx<N_NODE_AMOUNT; nodeindx++)
 	{
@@ -66,19 +104,33 @@ void N_MasterReadFirstRelevantNodeData(uint8_t function, volatile uint32_t** dat
 				{
 					*data = &((*node_data_ppp)[nodeindx][cindx]);//copy received data location to use immediately
 				}
+				else
+				{
+					*data = NULL;
+				}
+				free(rxdata);
+				rxdata = NULL;
 				return;
 			}
 		}
 	}
-	free(rxdata);
+	if(rxdata != NULL)
+	{
+		free(rxdata);
+		rxdata = NULL;
+	}
 }
 
+/*
+ * desc: read all data from every node
+ */
 void N_MasterRefreshAllNodeData(volatile uint8_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp)
 {
 	//kell egy mutex
 	uint8_t txdata[16] = {0x00, N_ADDR_MSB, N_CMD_READ, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0xff, 0x01};
-	uint8_t* rxdata = calloc(N_MAX_RX_BUFF, sizeof(uint8_t));
 	uint16_t rxlen= 0;
+	uint8_t* rxdata = calloc(N_MAX_RX_BUFF, sizeof(uint8_t));
+	if(rxdata == NULL)	{ Error_Handler();}//calloc fail
 
 	for(uint8_t nodeindx=0; nodeindx<N_NODE_AMOUNT; nodeindx++)
 	{
@@ -92,39 +144,7 @@ void N_MasterRefreshAllNodeData(volatile uint8_t*** capabilities_ppp, volatile u
 		}
 	}
 	free(rxdata);
-}
-
-int N_MasterHandleRxData(uint8_t* rxbuff, uint8_t rxlen, uint32_t* node_data_p, uint8_t* capabilitiesf_p)
-{
-	uint8_t rxindx = 2;//set to after master addr
-	uint32_t tmp_data = 0;
-
-	while(rxindx < rxlen)
-	{
-		switch(rxbuff[rxindx])
-		{
-
-			case N_CMD_READ:	//master receives data from slave
-								tmp_data = (rxbuff[rxindx+4] | (rxbuff[rxindx+6]<<8) | (rxbuff[rxindx+8]<<16) | (rxbuff[rxindx+10]<<24));//get data from rxbuff
-								N_StoreNodeData(node_data_p,tmp_data, rxbuff[rxindx+2], capabilitiesf_p, NULL);//save data to node data block
-								break;
-
-			case N_CMD_WRITE:	//no such response is possible from slave
-								break;
-
-			case N_CMD_GET_CAPABILITIES:	//handled only at init phase
-											break;
-
-			case 0xff:	//idle word low byte, end of response
-						break;
-
-			default:	return -1;
-						break;//bab
-		}
-		rxindx += N_BUFF_SECTION_SIZE;
-	}
-
-	return 0;
+	rxdata = NULL;
 }
 
 void N_MasterInitNodeNetwork(volatile uint8_t*** capabilitiesf_ppp, volatile uint32_t*** node_data_ppp)
@@ -132,8 +152,9 @@ void N_MasterInitNodeNetwork(volatile uint8_t*** capabilitiesf_ppp, volatile uin
 	uint8_t addr = 0;
 
 	uint8_t tx[16] = {0x00, N_ADDR_MSB, N_CMD_GET_CAPABILITIES, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00,N_DATA_MSB, 0xff, 0x01};
-	uint8_t* rx = calloc(N_MAX_RX_BUFF, sizeof(uint8_t));
 	uint8_t rxlen = 0;
+	uint8_t* rx = calloc(N_MAX_RX_BUFF, sizeof(uint8_t));
+	if(rx == NULL)	{ Error_Handler();}//calloc fail
 
 	//allocate mem for capabilities
 	*capabilitiesf_ppp = (volatile uint8_t**)calloc(N_NODE_AMOUNT, sizeof(volatile uint8_t*));
@@ -201,7 +222,7 @@ int N_AppendTxBuff(uint8_t* txbuff, uint8_t* offset, uint8_t* data, uint8_t data
 }
 
 /*
- * Reads the first node data in the local variable structure which has the given function
+ * desc: Gets the first node data in the local variable structure which has the given function
  */
 void N_MasterGetFirstRelevantNodeData(uint8_t function, uint32_t* data, volatile uint8_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp)
 {
@@ -222,6 +243,7 @@ void N_MasterGetFirstRelevantNodeData(uint8_t function, uint32_t* data, volatile
 }
 
 /*
+ * desc: read local stored data
  * nd - data block for node
  * data - pointer to variable where to store the value
  * data type - what kind of data to get (values are in node.h at section: node functions)
@@ -243,6 +265,7 @@ int N_GetNodeData(uint32_t* nd, uint32_t* data, uint8_t data_type, const uint8_t
 }
 
 /*
+ * desc: overwrite local stored data
  * nd - data block for node
  * data - data to store
  * data type - what kind of data to store (values are in node.h at section: node functions)
