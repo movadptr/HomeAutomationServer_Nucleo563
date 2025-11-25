@@ -46,15 +46,12 @@ int8_t N_MasterReadNodeData(uint8_t nodeaddr, uint8_t function, volatile uint32_
 
 	uint8_t txdata[16] = {nodeaddr, N_ADDR_MSB, N_CMD_READ, N_DATA_MSB, function, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0xff, 0x01};
 	uint16_t rxlen = 0;
-	uint8_t* rxdata = calloc(N_MAX_RX_BUFF, sizeof(uint8_t));
-	if(rxdata == NULL)	{ Error_Handler();}//calloc fail
+	uint8_t rxdata[N_MAX_RX_BUFF] = {0};
 
 	HAL_UART_Transmit(&huart2, txdata, 8, 100);
 	HAL_UARTEx_ReceiveToIdle(&huart2, rxdata, N_MAX_RX_BUFF, &rxlen, 1000);
 	*data = ((rxdata[6]<<0) | (rxdata[8]<<8) | (rxdata[10]<<16) | (rxdata[12]<<24));//save received data
 
-	free(rxdata);
-	rxdata = NULL;
 	return 0;
 }
 
@@ -86,8 +83,7 @@ void N_MasterReadFirstRelevantNodeData(uint8_t function, volatile uint32_t** dat
 {
 	uint8_t txdata[16] = {0x00, N_ADDR_MSB, N_CMD_READ, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0xff, 0x01};
 	uint16_t rxlen = 0;
-	uint8_t* rxdata = calloc(N_MAX_RX_BUFF, sizeof(uint8_t));
-	if(rxdata == NULL)	{ Error_Handler();}//calloc fail
+	uint8_t rxdata[N_MAX_RX_BUFF] = {0};
 
 	for(uint8_t nodeindx=0; nodeindx<N_NODE_AMOUNT; nodeindx++)
 	{
@@ -108,16 +104,9 @@ void N_MasterReadFirstRelevantNodeData(uint8_t function, volatile uint32_t** dat
 				{
 					*data = NULL;
 				}
-				free(rxdata);
-				rxdata = NULL;
 				return;
 			}
 		}
-	}
-	if(rxdata != NULL)
-	{
-		free(rxdata);
-		rxdata = NULL;
 	}
 }
 
@@ -129,8 +118,7 @@ void N_MasterRefreshAllNodeData(volatile uint8_t*** capabilities_ppp, volatile u
 	//kell egy mutex
 	uint8_t txdata[16] = {0x00, N_ADDR_MSB, N_CMD_READ, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0xff, 0x01};
 	uint16_t rxlen= 0;
-	uint8_t* rxdata = calloc(N_MAX_RX_BUFF, sizeof(uint8_t));
-	if(rxdata == NULL)	{ Error_Handler();}//calloc fail
+	uint8_t rxdata[N_MAX_RX_BUFF] = {0};
 
 	for(uint8_t nodeindx=0; nodeindx<N_NODE_AMOUNT; nodeindx++)
 	{
@@ -141,10 +129,9 @@ void N_MasterRefreshAllNodeData(volatile uint8_t*** capabilities_ppp, volatile u
 			HAL_UART_Transmit(&huart2, txdata, 8, 100);
 			HAL_UARTEx_ReceiveToIdle(&huart2, rxdata, N_MAX_RX_BUFF, &rxlen, 1000);
 			(*node_data_ppp)[nodeindx][cindx] = ((rxdata[6]<<0) | (rxdata[8]<<8) | (rxdata[10]<<16) | (rxdata[12]<<24));
+			memset(rxdata, 0, N_MAX_RX_BUFF);
 		}
 	}
-	free(rxdata);
-	rxdata = NULL;
 }
 
 void N_MasterInitNodeNetwork(volatile uint8_t*** capabilitiesf_ppp, volatile uint32_t*** node_data_ppp)
@@ -153,8 +140,7 @@ void N_MasterInitNodeNetwork(volatile uint8_t*** capabilitiesf_ppp, volatile uin
 
 	uint8_t tx[16] = {0x00, N_ADDR_MSB, N_CMD_GET_CAPABILITIES, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00,N_DATA_MSB, 0xff, 0x01};
 	uint8_t rxlen = 0;
-	uint8_t* rx = calloc(N_MAX_RX_BUFF, sizeof(uint8_t));
-	if(rx == NULL)	{ Error_Handler();}//calloc fail
+	uint8_t rx[N_MAX_RX_BUFF] = {0};
 
 	//allocate mem for capabilities
 	*capabilitiesf_ppp = (volatile uint8_t**)calloc(N_NODE_AMOUNT, sizeof(volatile uint8_t*));
@@ -171,8 +157,8 @@ void N_MasterInitNodeNetwork(volatile uint8_t*** capabilitiesf_ppp, volatile uin
 		HAL_UARTEx_ReceiveToIdle(&huart2, rx, N_MAX_RX_BUFF, (uint16_t*)&rxlen, 1000);
 		N_MasterStoreCapabilities(rx, rxlen*2, capabilitiesf_ppp, addr, node_data_ppp);
 		addr++;
+		memset(rx, 0, N_MAX_RX_BUFF);
 	}
-	free(rx);
 }
 
 void N_MasterStoreCapabilities(uint8_t* rxbuff, uint8_t rxlen, volatile uint8_t*** capabilitiesf_ppp, uint8_t addr, volatile uint32_t*** node_data_ppp)

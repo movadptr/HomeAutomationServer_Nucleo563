@@ -587,8 +587,8 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
 
   RTC_DateTypeDef RTC_Date = {0};
   RTC_TimeTypeDef RTC_Time = {0};
-  char tmps[30]={0};
-  time_t tmp_ts;
+  char ts_str[30]={0};
+  time_t ts_data;
 
   UNUSED(thread_input);
 
@@ -623,7 +623,7 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
 	HAL_RTC_GetTime(&RtcHandle,&RTC_Time,RTC_FORMAT_BIN);
 	HAL_RTC_GetDate(&RtcHandle,&RTC_Date,RTC_FORMAT_BIN);
 	//store time data in different ways
-	tmp_ts =  get_local_rtc_time_date(&RTC_Date, &RTC_Time, tmps);
+	ts_data =  get_local_rtc_time_date(&RTC_Date, &RTC_Time, ts_str);
 
 	if(time_update_after_boot_flag == 1)
 	{
@@ -633,8 +633,8 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
 			free(HAdata.time_update_after_boot_timestamp);
 			HAdata.time_update_after_boot_timestamp = NULL;
 		}
-		HAdata.time_update_after_boot_timestamp = StrAllocAndCpy(tmps);
-		HAdata.last_action_timestamp = tmp_ts;
+		HAdata.time_update_after_boot_timestamp = StrAllocAndCpy(ts_str);
+		HAdata.last_action_timestamp = ts_data;
 	}
 
     if (ret == NX_SUCCESS)
@@ -643,7 +643,7 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
 		nx_udp_source_extract(data_packet, &source_ip_address, &source_port);//get info about the client address and port
 		PRINT_DATA(source_ip_address, source_port, data_buffer);//print the client address, the remote port and the received data
 
-		HAdata.last_action_timestamp = tmp_ts;
+		HAdata.last_action_timestamp = ts_data;
 
 		if(strcmp((char*)data_buffer, HA_SECR_STR1) == 0)
 		{
@@ -666,7 +666,7 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
 			TempRoom2 = cnv.f;
 
 			sprintf(txstr,"INFO_Server datetime:\t%s\nBoot datetime:\t\t\t%s\nServer temp:\t%.2f°C\nRoom temp1:\t\t%.2f°C\nRoom temp2:\t\t%.2f°C\nOut temp:\t\t\t\t%.2f°C",
-					tmps,
+					ts_str,
 					HAdata.time_update_after_boot_timestamp!=0?HAdata.time_update_after_boot_timestamp:"no_ts",
 					HAdata.temperature_server,
 					TempRoom1,
@@ -694,7 +694,7 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
 				uint32_t i;
 			}cnv;
 
-			cnv.i = atoi((const char*)data_buffer+HA_SECR_STR4_LEN);
+			cnv.i = atoi((const char*)data_buffer+HA_SECR_STR4_LEN);//convert pos from string to num
 			N_WriteEveryRelevantNode(N_EAST_SHADER, cnv.u, &node_capabilities_pp, &node_data_pp);
 		}
 
@@ -1007,23 +1007,22 @@ static VOID App_HTTPS_Thread_Entry(ULONG thread_input)
 				}
 			}
 		}
-
-
 	}
 }
 
 //functions////////////////////////////////////////////////////////////////////////////////////////////
 
+//TODO cleanup //inspect during debug
 UINT ipstr_cleanup(char* dst, char* src)
 {
-	ULONG indx_d = 0;
-	ULONG indx_s = 0;
+	uint16_t indx_d = 0;
+	uint16_t indx_s = 0;
 
 	if( (dst != NULL) && (src != NULL) )
 	{
 		while(1)
 		{
-			if( (src[indx_s]<'0') || (src[indx_s]>'9') )//we have decimal numbers in the string separated with '.' so it stops when finds a number
+			if((( (src[indx_s]<'0') || (src[indx_s]>'9') )) && (indx_s<(sizeof(uint16_t))))//we have decimal numbers in the string separated with '.' so it stops when finds a number
 			{
 				indx_s++;
 			}
@@ -1298,8 +1297,7 @@ UINT tls_setup_callback(NX_WEB_HTTP_CLIENT *client_ptr, NX_SECURE_TLS_SESSION *t
 UINT createAndSendUDPPacket(ULONG ip_address, UINT port, char* data)
 {
 	UINT ret = 0;
-	char* data_buffer = calloc(UDP_DATA_LEN, sizeof(char));
-	if(data_buffer == NULL)	{ Error_Handler();}//calloc fail
+	char data_buffer[UDP_DATA_LEN] = {0};
 
 	NX_PACKET *data_packet;
 
@@ -1322,9 +1320,6 @@ UINT createAndSendUDPPacket(ULONG ip_address, UINT port, char* data)
 
 	//send the message
 	ret = nx_udp_socket_send(&UDPSocket, data_packet, ip_address, port);
-
-	free(data_buffer);
-	data_buffer = NULL;
 
 	return ret;
 }
