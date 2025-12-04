@@ -63,6 +63,8 @@ RNG_HandleTypeDef hrng;
 
 RTC_HandleTypeDef hrtc;
 
+SD_HandleTypeDef hsd1;
+
 SPI_HandleTypeDef hspi5;
 
 UART_HandleTypeDef huart2;
@@ -94,6 +96,7 @@ static void MX_RNG_Init(void);
 static void MX_RTC_Init(void);
 static void MX_SPI5_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_SDMMC1_SD_Init(void);
 /* USER CODE BEGIN PFP */
 void fill_stack_heap_w_pattern(void);
 /* USER CODE END PFP */
@@ -109,7 +112,8 @@ void fill_stack_heap_w_pattern(void);
   */
 int main(void)
 {
-	/* USER CODE BEGIN 1 */
+
+  /* USER CODE BEGIN 1 */
 #ifdef DEBUG
 	fill_stack_heap_w_pattern();
 #endif//DEBUG
@@ -140,6 +144,7 @@ int main(void)
   MX_RTC_Init();
   MX_SPI5_Init();
   MX_USART2_UART_Init();
+  //MX_SDMMC1_SD_Init();
   /* USER CODE BEGIN 2 */
 
 
@@ -159,7 +164,7 @@ int main(void)
 	printf("\n\rROOM tempsensor device ID:%x\n\r", LM71_init(SPI_TEMP_ROOM_CS_Pin, SPI_TEMP_ROOM_CS_GPIO_Port) & 0x0000ffff);
 
 	oled_init();
-	write_text_H(10, 10, "H563ZI", Pixel_on, size_5x8);
+	write_text_H(0, 0, "H563ZI", Pixel_on, size_5x8);
 	print_disp_mat();
 
 	//setting up stuff for RS485 node network
@@ -496,6 +501,37 @@ static void MX_RTC_Init(void)
 }
 
 /**
+  * @brief SDMMC1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SDMMC1_SD_Init(void)
+{
+
+  /* USER CODE BEGIN SDMMC1_Init 0 */
+
+  /* USER CODE END SDMMC1_Init 0 */
+
+  /* USER CODE BEGIN SDMMC1_Init 1 */
+
+  /* USER CODE END SDMMC1_Init 1 */
+  hsd1.Instance = SDMMC1;
+  hsd1.Init.ClockEdge = SDMMC_CLOCK_EDGE_RISING;
+  hsd1.Init.ClockPowerSave = SDMMC_CLOCK_POWER_SAVE_DISABLE;
+  hsd1.Init.BusWide = SDMMC_BUS_WIDE_4B;
+  hsd1.Init.HardwareFlowControl = SDMMC_HARDWARE_FLOW_CONTROL_DISABLE;
+  hsd1.Init.ClockDiv = 0;
+  if (HAL_SD_Init(&hsd1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SDMMC1_Init 2 */
+
+  /* USER CODE END SDMMC1_Init 2 */
+
+}
+
+/**
   * @brief SPI5 Initialization Function
   * @param None
   * @retval None
@@ -661,6 +697,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : SDMMC1_CARD_DETECT_Pin */
+  GPIO_InitStruct.Pin = SDMMC1_CARD_DETECT_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(SDMMC1_CARD_DETECT_GPIO_Port, &GPIO_InitStruct);
+
   /*Configure GPIO pin : UCPD_FLT_Pin */
   GPIO_InitStruct.Pin = UCPD_FLT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
@@ -726,12 +768,12 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 	char TimS[30] = {0};
 	time_t ts = 0;
 	//get time  date data from rtc
-	HAL_RTC_GetTime(hrtc,&RTC_Time,RTC_FORMAT_BIN);
-	HAL_RTC_GetDate(hrtc,&RTC_Date,RTC_FORMAT_BIN);
+	HAL_RTC_GetTime(hrtc,&RTC_Time,RTC_FORMAT_BCD);
+	HAL_RTC_GetDate(hrtc,&RTC_Date,RTC_FORMAT_BCD);
 	//convert to local time
 	ts = get_local_rtc_time_date(&RTC_Date, &RTC_Time, TimS);
 
-	https_trigger_presc ++;
+	https_trigger_presc++;
 	if(https_trigger_presc >= HTTPS_TRIG_PRESC_CMP)
 	{
 		https_trigger_presc = 0;
@@ -781,7 +823,7 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 			if(HAdata.screen_state == 0)
 			{
 				HAdata.screen_state = 1;
-				oled_send_cmd(CMD_Display_on_normal_mode);
+				oled_send_cmd(CMD_Set_Disp_ON);
 			}
 			update_screen(TimS);//update the small oled
 		}
@@ -790,7 +832,7 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 			if(HAdata.screen_state == 1)
 			{
 				HAdata.screen_state = 0;
-				oled_send_cmd(CMD_Display_off_sleep_mode);
+				oled_send_cmd(CMD_Set_Disp_Off);
 			}
 		}
 	}
@@ -805,8 +847,8 @@ void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin)
 		RTC_DateTypeDef RTC_Date = {0};
 		RTC_TimeTypeDef RTC_Time = {0};
 		//get time  date data from rtc
-		HAL_RTC_GetTime(&hrtc,&RTC_Time,RTC_FORMAT_BIN);
-		HAL_RTC_GetDate(&hrtc,&RTC_Date,RTC_FORMAT_BIN);
+		HAL_RTC_GetTime(&hrtc,&RTC_Time,RTC_FORMAT_BCD);
+		HAL_RTC_GetDate(&hrtc,&RTC_Date,RTC_FORMAT_BCD);
 		//store adjusted timestamp
 		HAdata.last_action_timestamp =  get_local_rtc_time_date(&RTC_Date, &RTC_Time, NULL);
 	}
@@ -848,10 +890,10 @@ char* StrAllocAndCpy(char* str)
 	return p;
 }
 
-void update_screen(char* tmpTimS)
+void update_screen(char* time_string)
 {
 	delete_disp_mat();
-	write_text_H(0, 55, tmpTimS, Pixel_on, size_5x8);
+	write_text_H(0, 0, time_string, Pixel_on, size_5x8);
 	print_disp_mat();
 }
 
@@ -891,10 +933,11 @@ void SetSmoothCalib(int16_t calv)
 // returns an adjusted timestamp
 time_t get_local_rtc_time_date(RTC_DateTypeDef* RTC_Date_p,  RTC_TimeTypeDef* RTC_Time_p, char* tmps)
 {
+	time_t timestamp = 0;
 
 #if (TIME_ZONE | DAYLIGHTSAVE)
 	//convert rtc struct to timestramp, to be able to easily work on
-	time_t timestamp = RTCDateTime2timestamp(RTC_Date_p, RTC_Time_p);
+	timestamp = RTCDateTime2timestamp(RTC_Date_p, RTC_Time_p);
 
 #ifdef	TIME_ZONE //adding x hour to display local time
   	timestamp += (TIME_ZONE*3600UL);
@@ -913,26 +956,33 @@ time_t get_local_rtc_time_date(RTC_DateTypeDef* RTC_Date_p,  RTC_TimeTypeDef* RT
 	timestamp2RTCDateTime(timestamp, RTC_Date_p, RTC_Time_p);
 #endif//(TIME_ZONE | DAYLIGHTSAVE)
 
+	//covert bcd values to string (still better than sprintf)
 	if(tmps != NULL)
 	{
-		sprintf(tmps, "20%02i-%02i-%02i / %02i:%02i:%02i", RTC_Date_p->Year, RTC_Date_p->Month, RTC_Date_p->Date, RTC_Time_p->Hours, RTC_Time_p->Minutes, RTC_Time_p->Seconds);
+		tmps[0] = '2';
+		tmps[1] = '0';
+		tmps[2] = ((RTC_Date_p->Year&0xf0)>>4)+'0';
+		tmps[3] = (RTC_Date_p->Year&0x0f)+'0';
+		tmps[4] = '.';
+		tmps[5] = ((RTC_Date_p->Month&0xf0)>>4)+'0';
+		tmps[6] = (RTC_Date_p->Month&0x0f)+'0';
+		tmps[7] = '.';
+		tmps[8] = ((RTC_Date_p->Date&0xf0)>>4)+'0';
+		tmps[9] = (RTC_Date_p->Date&0x0f)+'0';
+		tmps[10] = ' ';
+		tmps[11] = ' ';
+		tmps[12] = ((RTC_Time_p->Hours&0xf0)>>4)+'0';
+		tmps[13] = (RTC_Time_p->Hours&0x0f)+'0';
+		tmps[14] = ':';
+		tmps[15] = ((RTC_Time_p->Minutes&0xf0)>>4)+'0';
+		tmps[16] = (RTC_Time_p->Minutes&0x0f)+'0';
+		tmps[17] = ':';
+		tmps[18] = ((RTC_Time_p->Seconds&0xf0)>>4)+'0';
+		tmps[19] = (RTC_Time_p->Seconds&0x0f)+'0';
+		tmps[20] = 0;
 	}
 
 	return timestamp;
-}
-
-void timestamp2RTCDateTime(time_t timestamp, RTC_DateTypeDef *RD, RTC_TimeTypeDef *RT)
-{
-	struct tm DT;
-
-	DT = *localtime(&timestamp);
-
-	RT->Seconds = DT.tm_sec;
-	RT->Minutes = DT.tm_min;
-	RT->Hours = DT.tm_hour;
-	RD->Date = DT.tm_mday;
-	RD->Month = DT.tm_mon;
-	RD->Year = DT.tm_year-100;
 }
 
 time_t RTCDateTime2timestamp_(uint8_t year, uint8_t month, uint8_t day, uint8_t hour, uint8_t min, uint8_t sec)
@@ -946,9 +996,25 @@ time_t RTCDateTime2timestamp_(uint8_t year, uint8_t month, uint8_t day, uint8_t 
 	DT.tm_mday = day;
 	DT.tm_mon = month;
 	DT.tm_year =  year + 100;//tim.tm_year is referenced to 1900, RTC_Date.Year is referenced to 2000
+	DT.tm_isdst = 0;
+
 	timestamp = mktime(&DT);
 
 	return timestamp;
+}
+
+void timestamp2RTCDateTime(time_t timestamp, RTC_DateTypeDef *RD, RTC_TimeTypeDef *RT)
+{
+	struct tm DT;
+
+	DT = *localtime(&timestamp);
+
+	RT->Seconds = RTC_ByteToBcd2((uint8_t)DT.tm_sec);
+	RT->Minutes = RTC_ByteToBcd2((uint8_t)DT.tm_min);
+	RT->Hours = RTC_ByteToBcd2((uint8_t)DT.tm_hour);
+	RD->Date = RTC_ByteToBcd2((uint8_t)DT.tm_mday);
+	RD->Month = RTC_ByteToBcd2((uint8_t)DT.tm_mon+1);
+	RD->Year = RTC_ByteToBcd2((uint8_t)(DT.tm_year-100));
 }
 
 time_t RTCDateTime2timestamp(RTC_DateTypeDef *RD, RTC_TimeTypeDef *RT)
@@ -956,12 +1022,13 @@ time_t RTCDateTime2timestamp(RTC_DateTypeDef *RD, RTC_TimeTypeDef *RT)
 	struct tm DT;
 	time_t timestamp = 0;
 
-	DT.tm_sec = RT->Seconds;
-	DT.tm_min = RT->Minutes;
-	DT.tm_hour = RT->Hours;
-	DT.tm_mday = RD->Date;
-	DT.tm_mon = RD->Month;
-	DT.tm_year =  RD->Year+100;//tim.tm_year is referenced to 1900, RTC_Date.Year is referenced to 2000
+	DT.tm_sec = RTC_Bcd2ToByte(RT->Seconds);
+	DT.tm_min = RTC_Bcd2ToByte(RT->Minutes);
+	DT.tm_hour = RTC_Bcd2ToByte(RT->Hours);
+	DT.tm_mday = RTC_Bcd2ToByte(RD->Date);
+	DT.tm_mon = RTC_Bcd2ToByte(RD->Month)-1;
+	DT.tm_year =  RTC_Bcd2ToByte(RD->Year)+100;//DT.tm_year is referenced to 1900, RTC_Date.Year is referenced to 2000
+	DT.tm_isdst = 0;
 	timestamp = mktime(&DT);
 
 	return timestamp;

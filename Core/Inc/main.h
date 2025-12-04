@@ -39,7 +39,7 @@ extern "C" {
 #include "tx_port.h"
 
 #include "LM71_SPI_temp_sensor.h"
-#include "SSD1315_128x64_Oled.h"
+#include <SSD1306_Oled.h>
 #include "Fonts_and_bitmaps_FLASH.h"
 #include "disp_fgv.h"
 #include "master_node.h"
@@ -135,6 +135,8 @@ int8_t check_alarm(uint32_t current_time, uint32_t* HAalarms_F, int8_t start_ind
 #define UCPD_CC2_GPIO_Port GPIOB
 #define RMII_TXD1_Pin GPIO_PIN_15
 #define RMII_TXD1_GPIO_Port GPIOB
+#define SDMMC1_CARD_DETECT_Pin GPIO_PIN_2
+#define SDMMC1_CARD_DETECT_GPIO_Port GPIOG
 #define RED_LED_Pin GPIO_PIN_4
 #define RED_LED_GPIO_Port GPIOG
 #define UCPD_FLT_Pin GPIO_PIN_7

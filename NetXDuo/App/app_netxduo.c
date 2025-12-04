@@ -620,8 +620,8 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
     ret = nx_udp_socket_receive(&UDPSocket, &data_packet, 100);//wait for data for 1 sec
 
     //get time  date data from rtc
-	HAL_RTC_GetTime(&RtcHandle,&RTC_Time,RTC_FORMAT_BIN);
-	HAL_RTC_GetDate(&RtcHandle,&RTC_Date,RTC_FORMAT_BIN);
+	HAL_RTC_GetTime(&RtcHandle,&RTC_Time,RTC_FORMAT_BCD);
+	HAL_RTC_GetDate(&RtcHandle,&RTC_Date,RTC_FORMAT_BCD);
 	//store time data in different ways
 	ts_data =  get_local_rtc_time_date(&RTC_Date, &RTC_Time, ts_str);
 
@@ -786,8 +786,8 @@ static VOID App_HTTPS_Thread_Entry(ULONG thread_input)
 		tx_semaphore_get(&HTTPSSemaphore, NX_WAIT_FOREVER);
 
 		//get time  date data from rtc
-		HAL_RTC_GetTime(&RtcHandle,&RTC_Time,RTC_FORMAT_BIN);
-		HAL_RTC_GetDate(&RtcHandle,&RTC_Date,RTC_FORMAT_BIN);
+		HAL_RTC_GetTime(&RtcHandle,&RTC_Time,RTC_FORMAT_BCD);
+		HAL_RTC_GetDate(&RtcHandle,&RTC_Date,RTC_FORMAT_BCD);
 		get_local_rtc_time_date(&RTC_Date, &RTC_Time, tmps);
 
 		//get public IP
@@ -1421,7 +1421,6 @@ static void rtc_time_update(NX_SNTP_TIME_MESSAGE *SNTP_msg, NX_SNTP_TIME *local_
 	RTC_DateTypeDef sdatestructure = {0};
 	RTC_TimeTypeDef stimestructure = {0};
 	struct tm ts;
-	CHAR  temp[32] = {0};
 	time_t timestamp = 0;
 
 	if(local_time == NULL)//not calling from time update callback
@@ -1445,42 +1444,29 @@ static void rtc_time_update(NX_SNTP_TIME_MESSAGE *SNTP_msg, NX_SNTP_TIME *local_
 		timestamp -= EPOCH_TIME_DIFF;
 	}
 
-
 	//convert time in yy/mm/dd hh:mm:sec
 	ts = *localtime(&timestamp);
 
-	//convert date composants to hex format
-	sprintf(temp, "%d", (ts.tm_year - 100));
-	sdatestructure.Year = strtol(temp, NULL, 16);
-	sprintf(temp, "%d", ts.tm_mon + 1);
-	sdatestructure.Month = strtol(temp, NULL, 16);
-	sprintf(temp, "%d", ts.tm_mday);
-	sdatestructure.Date = strtol(temp, NULL, 16);
-	/* dummy weekday */
-	sdatestructure.WeekDay =0x00;
-
+	sdatestructure.Year = (ts.tm_year - 100);
+	sdatestructure.Month = (ts.tm_mon + 1);
+	sdatestructure.Date = ts.tm_mday;
+	sdatestructure.WeekDay = 0;//dummy weekday
 
 	//convert time composants to hex format
-	sprintf(temp,"%d", ts.tm_hour);
-	stimestructure.Hours = strtol(temp, NULL, 16);
-	sprintf(temp,"%d", ts.tm_min);
-	stimestructure.Minutes = strtol(temp, NULL, 16);
-	sprintf(temp, "%d", ts.tm_sec);
-	stimestructure.Seconds = strtol(temp, NULL, 16);
+	stimestructure.Hours = ts.tm_hour;
+	stimestructure.Minutes = ts.tm_min;
+	stimestructure.Seconds = ts.tm_sec;
 
-	if(sdatestructure.Year != 0)
+	if (HAL_RTC_SetDate(&RtcHandle, &sdatestructure, RTC_FORMAT_BIN) != HAL_OK)
 	{
-		if (HAL_RTC_SetDate(&RtcHandle, &sdatestructure, RTC_FORMAT_BCD) != HAL_OK)
-		{
-			Error_Handler();
-		}
-
-		if (HAL_RTC_SetTime(&RtcHandle, &stimestructure, RTC_FORMAT_BCD) != HAL_OK)
-		{
-			Error_Handler();
-		}
-
-		nx_sntp_client_set_local_time(&SntpClient, SNTP_msg->receive_time.seconds, SNTP_msg->receive_time.fraction);
+		Error_Handler();
 	}
+
+	if (HAL_RTC_SetTime(&RtcHandle, &stimestructure, RTC_FORMAT_BIN) != HAL_OK)
+	{
+		Error_Handler();
+	}
+
+	nx_sntp_client_set_local_time(&SntpClient, SNTP_msg->receive_time.seconds, SNTP_msg->receive_time.fraction);
 }
 /* USER CODE END 1 */

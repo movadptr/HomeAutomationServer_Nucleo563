@@ -13,19 +13,19 @@
 #include <stdint.h>
 #include "disp_fgv.h"
 #include "Fonts_and_bitmaps_FLASH.h"
-#include "SSD1315_128x64_Oled.h"
+#include "SSD1306_Oled.h"
 
 extern constant uint8_t _5x8chars[450];
 extern constant uint8_t _10x16chars[1800];
 
-uint8_t disp_mat[pixels_y][pixels_x/8]={0x00};
+uint8_t disp_mat[pixels_x][pixels_y/8]={0x00};
 uint16_t firstcharbyte=0;
 uint8_t charwidth=0;
 
 #ifdef _AVR_IO_H_
 #define constant	const PROGMEM
 #ifdef pgm_read_byte_far
-#define read_progmem	pgm_read_byte_far
+#define read_progmem	pgm_read_byte_far	//if used with AVR uc, change the dereferences with this fn
 #else
 #define read_progmem	pgm_read_byte_near
 #endif
@@ -34,9 +34,41 @@ uint8_t charwidth=0;
 #endif
 
 //____________________print in vertical orientation________________________________//
+void print_bmp_V(uint8_t col, uint8_t row, constant uint8_t *bmp, uint8_t Pixel_Status, uint8_t write_mode)
+{
+	uint16_t indx=2, indx_in_page=0;
+	const uint8_t height=(*(bmp+0)), width=(*(bmp+1));
+	uint8_t	pages=(height/8), lastpageheight=(height%8), page=1, notwholelastpage=0;
+	if(lastpageheight!=0) { pages++; notwholelastpage=1;}	else{}
+	const uint16_t len = (width*pages);
 
-
-
+	while((indx-2)<len)
+	{
+		for(uint8_t bit=0, c_col=col; bit<8; bit++)
+		{
+			if(notwholelastpage&&(page==pages)&&(bit==lastpageheight))	{break;}	else{}
+			if(Pixel_Status==Pixel_on)
+			{
+				if( (*(bmp+indx) << bit) & 0x80)	{ setpixel(c_col, indx_in_page+row, Pixel_on);}
+				else if(write_mode == Overwrite) 	{ setpixel(c_col, indx_in_page+row, Pixel_off);} else{}
+			}
+			else if(Pixel_Status==Pixel_off)
+			{
+				if( (*(bmp+indx) << bit) & 0x80)	{ setpixel(c_col, indx_in_page+row, Pixel_off);}
+				else if(write_mode == Overwrite) 	{ setpixel(c_col, indx_in_page+row, Pixel_on);}	else{}
+			}	else{}
+			c_col++;
+		}
+		indx++;
+		indx_in_page++;
+		if(indx_in_page>=width)
+		{
+			indx_in_page = 0;
+			page++;
+			col+=8;
+		}
+	}
+}
 
 uint8_t write_dec_num_uint32_t_V(uint8_t col, uint8_t row, uint32_t num, uint8_t Pixel_Status, uint8_t size, uint8_t align)
 {
@@ -59,84 +91,28 @@ uint8_t write_dec_num_uint32_t_V(uint8_t col, uint8_t row, uint32_t num, uint8_t
 	if(i==10)	{i--;}	else{}
 	if(align==ALIGN_RIGHT)//annyival arrébb kezdjük balra kiírni amennyi pixel széles a számsor, elválasztó oszlopokkal együtt
 	{
-		col-=((9-i)-1);//ennyi space kell
+		row-=((9-i)-1);//ennyi space kell
 		while(i<10)
 		{
 			character_info(numt[i]+'0',size);
-			col-=charwidth;
+			row-=charwidth;
 			i++;
 		}
-		if(col>(pixels_x-1))	{return lcd_err;}	else{}//alulcsordult
+		if(row>(pixels_x-1))	{return lcd_err;}	else{}//alulcsordult
 	}	else{}
 	i=first_not_zero;
 	while(i<10)
 	{
-		col=write_character_V(col, row, numt[i]+'0', Pixel_Status, size);
-		if(col==lcd_err)	{ return lcd_err;}//nem fér ki a karakter
-		else{ i++; col++;}
+		row=write_character_V(row, col, numt[i]+'0', Pixel_Status, size);
+		if(row==lcd_err)	{ return lcd_err;}//nem fér ki a karakter
+		else{ i++; row++;}
 	}
 	return 0;
 }
 
-
-
-
-
-#ifdef _AVR_IO_H_
-void print_bmp_V(uint8_t col, uint8_t row, constant uint8_t *bmp, uint8_t Pixel_Status, uint8_t write_mode)
-{	//bmp[0]=magasság pixelekben, bmp[1]=szélesség pixelekben
-	uint16_t i=2, j=0, notwholelastpage=0;
-	uint8_t start_col=col, start_row=row, pages=(read_progmem(bmp)/8), lastpageheight=(read_progmem(bmp)%8), c_page=1;
-	if(lastpageheight!=0) { pages++; notwholelastpage=1;}	else{}
-	for(i=2; ((i-2)<(read_progmem(bmp+1)*pages)) && (col<pixels_x+1); i++,col++)
-	{
-		if(((i-2)% read_progmem(bmp+1)==0) && ((i-2)!=0))	{col=start_col; start_row-=8; c_page++;}	else{}
-		for(row=start_row,j=0; (j<8)&&(row<pixels_y); j++,row--)
-		{
-			if((c_page==pages)&&(j==lastpageheight)&&notwholelastpage)	{break;}	else{}
-			if(Pixel_Status==Pixel_on)
-			{
-				if( (read_progmem(bmp+i) << j) & 0x80)	{ setpixel(col,row,Pixel_on);}
-				else if(write_mode == Overwrite) { setpixel(col,row,Pixel_off);}	else{}
-			}
-			else if(Pixel_Status==Pixel_off)
-			{
-				if( (read_progmem(bmp+i) << j) & 0x80)	{ setpixel(col,row,Pixel_off);}
-				else if(write_mode == Overwrite) { setpixel(col,row,Pixel_on);}	else{}
-			}	else{}
-		}
-	}
-}
-#else
-void print_bmp_V(uint8_t col, uint8_t row, constant uint8_t *bmp, uint8_t Pixel_Status, uint8_t write_mode)
-{	//bmp[0]=magasság pixelekben, bmp[1]=szélesség pixelekben
-	uint16_t i=2, j=0, notwholelastpage=0;
-	uint8_t start_col=col, start_row=row, pages=(*(bmp)/8), lastpageheight=(*(bmp)%8), c_page=1;
-	if(lastpageheight!=0) { pages++; notwholelastpage=1;}	else{}
-	for(i=2; ((i-2)<(*(bmp+1)*pages)) && (col<pixels_x+1); i++,col++)
-	{
-		if(((i-2)% *(bmp+1)==0) && ((i-2)!=0))	{col=start_col; start_row-=8; c_page++;}	else{}
-		for(row=start_row,j=0; (j<8)&&(row<pixels_y); j++,row--)
-		{
-			if((c_page==pages)&&(j==lastpageheight)&&notwholelastpage)	{break;}	else{}
-			if(Pixel_Status==Pixel_on)
-			{
-				if( (*(bmp+i) << j) & 0x80)	{ setpixel(col,row,Pixel_on);}
-				else if(write_mode == Overwrite)	{ setpixel(col,row,Pixel_off);}	else{}
-			}
-			else if(Pixel_Status==Pixel_off)
-			{
-				if( (*(bmp+i) << j) & 0x80)	{ setpixel(col,row,Pixel_off);}
-				else if(write_mode == Overwrite) { setpixel(col,row,Pixel_on);} else{}
-			}	else{}
-		}
-	}
-}
-#endif
-
 uint8_t write_dec_num_float_V(uint8_t col, uint8_t row, float num, uint8_t digits_after_dot, uint8_t Pixel_Status, uint8_t size)
 {
-	uint8_t i=0, numt[9]={0}, start_col=col, neg=0;
+	uint8_t i=0, numt[9]={0}, start_col=row, neg=0;
 	if(num != fabs(num))
 	//floating point num has sign bit, so besides that bit, the value won't change thus this makes no problem
 	{
@@ -163,93 +139,34 @@ uint8_t write_dec_num_float_V(uint8_t col, uint8_t row, float num, uint8_t digit
 	}
 	digits_after_dot+=4;//tömb indexet csinál az értékből
 	if(digits_after_dot<last_not_zero)	{last_not_zero=digits_after_dot;}	else{}
-	col=write_character_V(col, row, '.', Pixel_Status, size);
-	col++;
+	row=write_character_V(row, col, '.', Pixel_Status, size);
+	row++;
 	for(i=5; i < last_not_zero+1; )
 	{
-		col=write_character_V(col, row, numt[i]+'0', Pixel_Status, size);
-		if(col==lcd_err)	{return lcd_err;}	else{}//nem fér ki a karakter
+		row=write_character_V(row, col, numt[i]+'0', Pixel_Status, size);
+		if(row==lcd_err)	{return lcd_err;}	else{}//nem fér ki a karakter
 		i++;
-		if(i<last_not_zero+1)	{ col++;}	else{}
+		if(i<last_not_zero+1)	{ row++;}	else{}
 	}
-	col=start_col;
+	row=start_col;
 	for(last_not_zero=first_not_zero; last_not_zero<=4; last_not_zero++)//last_not_zero-t használom futó változónak, már úgyse kell, minek hoznék létre másikat
 	{
 		character_info(numt[last_not_zero]+'0',size);
-		col-=charwidth;
+		row-=charwidth;
 	}
-	col-=((4-first_not_zero)+1);//ennyi space kell
+	row-=((4-first_not_zero)+1);//ennyi space kell
 	if(neg)
 	{
 		character_info('-',size);
-		col-=(charwidth+1);
-		col=write_character_V(col, row, '-', Pixel_Status, size);
-		col++;
+		row-=(charwidth+1);
+		row=write_character_V(row, col, '-', Pixel_Status, size);
+		row++;
 	}
 	for(i=first_not_zero; i <=4; )
 	{
-		col=write_character_V(col, row, numt[i]+'0', Pixel_Status, size);
-		if(col==lcd_err)	{ return lcd_err;}//nem fér ki a karakter
-		else{ i++; col++;}
-	}
-	return 0;
-}
-
-uint8_t write_dec_num_time_format_V(uint8_t col, uint8_t row, uint8_t num, uint8_t Pixel_Status, uint8_t size, uint8_t align)
-{//egy nullát rak a szám elé ha a szám kisebb mint 10
-	uint8_t i=0, numt[2]={0};
-	num = (num&0x3f);//0b00111111;
-	numt[0]=((num/10)%10);
-	numt[1]=((num/1)%10);
-	if(align==ALIGN_RIGHT)//annyival arrébb kezdjük balra kiírni amennyi pixel széles a számsor elválasztó oszlopokkal együtt
-	{
-		while(i<2)
-		{
-			character_info(numt[i]+'0',size);
-			col-=charwidth;
-			i++;
-		}
-		if(col>(pixels_x-1))	{return lcd_err;}	else{}//alulcsordult
-	}	else{}
-	i=0;
-	while(i<2)
-	{
-		col=write_character_V(col, row, numt[i]+'0', Pixel_Status, size);
-		if(col==lcd_err)	{ return lcd_err;}//nem fér ki a karakter
-		else{ i++; col++;}
-	}
-	return col;
-}
-
-uint8_t write_dec_num_uint8_t_V(uint8_t col, uint8_t row, uint8_t num, uint8_t Pixel_Status, uint8_t size, uint8_t align)
-{
-	uint8_t i=0, numt[3]={0};
-	numt[0]=((num/100)%10);
-	numt[1]=((num/10)%10);
-	numt[2]=((num/1)%10);
-	uint8_t first_not_zero=2;
-	for(i=0; i<3; i++)
-	{
-		if(numt[i])	{first_not_zero=i; break;}	else{}
-	}
-	if(i==3)	{i--;}	else{}
-	if(align==ALIGN_RIGHT)//annyival arr�bb kezdj�k balra ki�rni amennyi pixel sz�les a sz�msor elv�laszt� oszlopokkal egy�tt
-	{
-		col-=((2-i)-1);//ennyivelvel kevesebb space kell
-		while(i<3)
-		{
-			character_info(numt[i]+'0',size);
-			col-=charwidth;
-			i++;
-		}
-		if(col>(pixels_x-1))	{return lcd_err;}	else{}//alulcsordult
-	}	else{}
-	i=first_not_zero;
-	while(i<3)
-	{
-		col=write_character_V(col, row, numt[i]+'0', Pixel_Status, size);
-		if(col==lcd_err)	{ return lcd_err;}//nem fér ki a karakter
-		else{ i++; col++;}
+		row=write_character_V(row, col, numt[i]+'0', Pixel_Status, size);
+		if(row==lcd_err)	{ return lcd_err;}//nem fér ki a karakter
+		else{ i++; row++;}
 	}
 	return 0;
 }
@@ -278,24 +195,24 @@ uint8_t write_dec_num_int16_t_V(uint8_t col, uint8_t row, int16_t num, uint8_t P
 		if(neg)
 		{
 			character_info('-',size);
-			col-=charwidth;
-		}else{ col++;}
-		col-=(4-i);//ennyi space kell
+			row-=charwidth;
+		}else{ row++;}
+		row-=(4-i);//ennyi space kell
 		while(i<5)
 		{
 			character_info(numt[i]+'0',size);
-			col-=charwidth;
+			row-=charwidth;
 			i++;
 		}
-		if(col > (pixels_x-1))	{return lcd_err;}	else{}//alulcsordult
+		if(row > (pixels_x-1))	{return lcd_err;}	else{}//alulcsordult
 	}	else{}
 	i=first_not_zero;
-	if(neg)	{ col=write_character_V(col, row, '-', Pixel_Status, size); col++;}
+	if(neg)	{ row=write_character_V(row, col, '-', Pixel_Status, size); row++;}
 	while(i<5)
 	{
-		col=write_character_V(col, row, numt[i]+'0', Pixel_Status, size);
-		if(col==lcd_err)	{ return lcd_err;}//nem fér ki a karakter
-		else{ i++; col++;}
+		row=write_character_V(row, col, numt[i]+'0', Pixel_Status, size);
+		if(row==lcd_err)	{ return lcd_err;}//nem fér ki a karakter
+		else{ i++; row++;}
 	}
 	return 0;
 }
@@ -316,21 +233,80 @@ uint8_t write_dec_num_uint16_t_V(uint8_t col, uint8_t row, uint16_t num, uint8_t
 	if(i==5)	{i--;}	else{}
 	if(align==ALIGN_RIGHT)//annyival arrébb kezdjük balra kiírni amennyi pixel széles a számsor, elválasztó oszlopokkal együtt
 	{
-		col-=((4-i)-1);//ennyi space kell
+		row-=((4-i)-1);//ennyi space kell
 		while(i<5)
 		{
 			character_info(numt[i]+'0',size);
-			col-=charwidth;
+			row-=charwidth;
 			i++;
 		}
-		if(col>(pixels_x-1))	{return lcd_err;}	else{}//alulcsordult
+		if(row>(pixels_x-1))	{return lcd_err;}	else{}//alulcsordult
 	}	else{}
 	i=first_not_zero;
 	while(i<5)
 	{
-		col=write_character_V(col, row, numt[i]+'0', Pixel_Status, size);
-		if(col==lcd_err)	{ return lcd_err;}//nem fér ki a karakter
-		else{ i++; col++;}
+		row=write_character_V(row, col, numt[i]+'0', Pixel_Status, size);
+		if(row==lcd_err)	{ return lcd_err;}//nem fér ki a karakter
+		else{ i++; row++;}
+	}
+	return 0;
+}
+
+uint8_t write_dec_num_time_format_V(uint8_t col, uint8_t row, uint8_t num, uint8_t Pixel_Status, uint8_t size, uint8_t align)
+{//egy nullát rak a szám elé ha a szám kisebb mint 10
+	uint8_t i=0, numt[2]={0};
+	num = (num&0x3f);//0b00111111;
+	numt[0]=((num/10)%10);
+	numt[1]=((num/1)%10);
+	if(align==ALIGN_RIGHT)//annyival arrébb kezdjük balra kiírni amennyi pixel széles a számsor elválasztó oszlopokkal együtt
+	{
+		while(i<2)
+		{
+			character_info(numt[i]+'0',size);
+			row-=charwidth;
+			i++;
+		}
+		if(row>(pixels_x-1))	{return lcd_err;}	else{}//alulcsordult
+	}	else{}
+	i=0;
+	while(i<2)
+	{
+		row=write_character_V(row, col, numt[i]+'0', Pixel_Status, size);
+		if(row==lcd_err)	{ return lcd_err;}//nem fér ki a karakter
+		else{ i++; row++;}
+	}
+	return row;
+}
+
+uint8_t write_dec_num_uint8_t_V(uint8_t col, uint8_t row, uint8_t num, uint8_t Pixel_Status, uint8_t size, uint8_t align)
+{
+	uint8_t i=0, numt[3]={0};
+	numt[0]=((num/100)%10);
+	numt[1]=((num/10)%10);
+	numt[2]=((num/1)%10);
+	uint8_t first_not_zero=2;
+	for(i=0; i<3; i++)
+	{
+		if(numt[i])	{first_not_zero=i; break;}	else{}
+	}
+	if(i==3)	{i--;}	else{}
+	if(align==ALIGN_RIGHT)//annyival arr�bb kezdj�k balra ki�rni amennyi pixel sz�les a sz�msor elv�laszt� oszlopokkal egy�tt
+	{
+		row-=((2-i)-1);//ennyivelvel kevesebb space kell
+		while(i<3)
+		{
+			character_info(numt[i]+'0',size);
+			row-=charwidth;
+			i++;
+		}
+		if(row>(pixels_x-1))	{return lcd_err;}	else{}//alulcsordult
+	}	else{}
+	i=first_not_zero;
+	while(i<3)
+	{
+		row=write_character_V(row, col, numt[i]+'0', Pixel_Status, size);
+		if(row==lcd_err)	{ return lcd_err;}//nem fér ki a karakter
+		else{ i++; row++;}
 	}
 	return 0;
 }
@@ -341,101 +317,21 @@ uint8_t write_text_V(uint8_t col, uint8_t row, char* text, uint8_t Pixel_Status,
 	{
 		if(*(text) != ' ')
 		{
-			col=write_character_V(col, row, *(text), Pixel_Status, size);
+			row=write_character_V(row, col, *(text), Pixel_Status, size);
 		}
-		else{ col+=2;}
-		if(col==lcd_err)	{ return lcd_err;}//nem fér ki a karakter
-		else{ text++; col++;}
+		else{ row+=2;}
+		if(row==lcd_err)	{ return lcd_err;}//nem fér ki a karakter
+		else{ text++; row++;}
 	}
 	return 0;
 }
 
-#ifdef _AVR_IO_H_
-uint8_t write_character_V(uint8_t start_col, uint8_t start_row, char character, uint8_t Pixel_Status, uint8_t size)
-{
-	uint8_t row=start_row, col=start_col;
-	uint8_t xi=0, yi=0;//futó változók
-	character_info(character, size);//karakter tömb infó // [0] -line in block	//[1] -width
-	if( ((start_col + charwidth) > pixels_x) )
-	{
-		return lcd_err;
-	}	else{}
-	if(size==size_5x8)
-	{
-		for(xi=0; xi<charwidth; xi++,col++)
-		{
-			for(yi=0,row=start_row; yi<8; yi++,row++)
-			{
-				if(Pixel_Status==Pixel_on)
-				{
-					if( ( read_progmem(_5x8chars+firstcharbyte+xi) >> yi) & 0b1)
-					{
-						setpixel(col,row,Pixel_on);
-					}
-					else
-					{
-						setpixel(col,row,Pixel_off);
-					}
-				}	else{}
-				if(Pixel_Status==Pixel_off)
-				{
-					if( ( read_progmem(_5x8chars+firstcharbyte+xi) >> yi) & 0b1)
-					{
-						setpixel(col,row,Pixel_off);
-					}
-					else
-					{
-						setpixel(col,row,Pixel_on);
-					}
-				}	else{}
-			}
-		}
-	}
-	else if(size==size_10x16)
-	{
-		uint8_t chr_half=0;//fut� v�ltoz�; a 10x16 os karakter k�t b�jt magass�g�...
-		start_row += 8;
-		for(chr_half=0; chr_half<2; chr_half++,start_row-=8)
-		{
-			for(xi=0,col=start_col; xi<charwidth; xi++, col++)
-			{
-				for(yi=0,row=start_row; yi<8; yi++,row++)
-				{
-					if(Pixel_Status==Pixel_on)
-					{
-						if( ( read_progmem(_10x16chars+firstcharbyte+(chr_half*10)+xi) >> yi) & 0b1)
-						{
-							setpixel(col,row,Pixel_on);
-						}
-						else
-						{
-							setpixel(col,row,Pixel_off);
-						}
-					}	else{}
-					if(Pixel_Status==Pixel_off)
-					{
-						if( ( read_progmem(_10x16chars+firstcharbyte+(chr_half*10)+xi) >> yi) & 0b1)
-						{
-							setpixel(col,row,Pixel_off);
-						}
-						else
-						{
-							setpixel(col,row,Pixel_on);
-						}
-					}	else{}
-				}
-			}
-		}
-	}	else{}
-	return col;
-}
-#else
 uint8_t write_character_V(uint8_t start_col, uint8_t start_row, char character, uint8_t Pixel_Status, uint8_t size)
 {
 	uint8_t row=start_row, col=start_col;
 	uint8_t xi=0, yi=0;//futó változók
 	character_info(character, size);
-	if( ((start_col + charwidth) > pixels_x) )
+	if( ((start_col + charwidth) > pixels_y) )
 	{
 		return lcd_err;
 	}	else{}
@@ -447,24 +343,24 @@ uint8_t write_character_V(uint8_t start_col, uint8_t start_row, char character, 
 			{
 				if(Pixel_Status==Pixel_on)
 				{
-					if( ( *(_5x8chars+firstcharbyte+xi) >> yi) & 0x01)
+					if( ( *(_5x8chars+firstcharbyte+xi) << yi) & 0x80)
 					{
-						setpixel(col,row,Pixel_on);
+						setpixel(row, col, Pixel_on);
 					}
 					else
 					{
-						setpixel(col,row,Pixel_off);
+						setpixel(row, col, Pixel_off);
 					}
 				}
 				else if(Pixel_Status==Pixel_off)
 				{
-					if( ( *(_5x8chars+firstcharbyte+xi) >> yi) & 0x01)
+					if( ( *(_5x8chars+firstcharbyte+xi) << yi) & 0x80)
 					{
-						setpixel(col,row,Pixel_off);
+						setpixel(row, col, Pixel_off);
 					}
 					else
 					{
-						setpixel(col,row,Pixel_on);
+						setpixel(row, col, Pixel_on);
 					}
 				}	else{}
 			}
@@ -473,8 +369,7 @@ uint8_t write_character_V(uint8_t start_col, uint8_t start_row, char character, 
 	else if(size==size_10x16)
 	{
 		uint8_t chr_half=0;//futó változó; a 10x16 os karakter két bájt magasságú...
-		start_row += 8;
-		for(chr_half=0; chr_half<2; chr_half++,start_row-=8)
+		for(chr_half=0; chr_half<2; chr_half++,start_row+=8)
 		{
 			for(xi=0,col=start_col; xi<charwidth; xi++,col++)
 			{
@@ -482,24 +377,24 @@ uint8_t write_character_V(uint8_t start_col, uint8_t start_row, char character, 
 				{
 					if(Pixel_Status==Pixel_on)
 					{
-						if( ( *(_10x16chars+firstcharbyte+(chr_half*10)+xi) >> yi) & 0x01)
+						if( ( *(_10x16chars+firstcharbyte+(chr_half*10)+xi) << yi) & 0x80)
 						{
-							setpixel(col,row,Pixel_on);
+							setpixel(row, col, Pixel_on);
 						}
 						else
 						{
-							setpixel(col,row,Pixel_off);
+							setpixel(row, col, Pixel_off);
 						}
 					}
 					else if(Pixel_Status==Pixel_off)
 					{
-						if( ( *(_10x16chars+firstcharbyte+(chr_half*10)+xi) >> yi) & 0x01)
+						if( ( *(_10x16chars+firstcharbyte+(chr_half*10)+xi) << yi) & 0x80)
 						{
-							setpixel(col,row,Pixel_off);
+							setpixel(row, col, Pixel_off);
 						}
 						else
 						{
-							setpixel(col,row,Pixel_on);
+							setpixel(row, col, Pixel_on);
 						}
 					}	else{}
 				}
@@ -508,64 +403,47 @@ uint8_t write_character_V(uint8_t start_col, uint8_t start_row, char character, 
 	}	else{}
 	return col;
 }
-#endif
 //____________________print in vertical orientation________________________________//
 
 
 
 //____________________print in horizontal orientation________________________________//
+void print_bmp_H(uint8_t col, uint8_t row, constant uint8_t *bmp, uint8_t Pixel_Status, uint8_t write_mode)
+{
+	uint16_t indx=2, indx_in_page=0;
+	const uint8_t height=(*(bmp+0)), width=(*(bmp+1));
+	uint8_t	pages=(height/8), lastpageheight=(height%8), page=1, notwholelastpage=0;
+	row+=height;
+	if(lastpageheight!=0) { pages++; notwholelastpage=1;}	else{}
+	const uint16_t len = (width*pages);
 
-#ifdef _AVR_IO_H_
-void print_bmp_H(uint8_t col, uint8_t row, constant uint8_t *bmp, uint8_t Pixel_Status, uint8_t write_mode)
-{	//bmp[0]=magasság pixelekben, bmp[1]=szélesség pixelekben
-	uint16_t i=2, j=0, notwholelastpage=0;
-	uint8_t start_col=col, start_row=row, pages=(read_progmem(bmp)/8), lastpageheight=(read_progmem(bmp)%8), c_page=1;
-	if(lastpageheight!=0) { pages++; notwholelastpage=1;}	else{}
-	for(i=2; ((i-2)<(read_progmem(bmp+1)*pages)) && (col<pixels_y+1); i++,col++)
+	while((indx-2)<len)
 	{
-		if(((i-2)% read_progmem(bmp+1)==0) && ((i-2)!=0))	{col=start_col; start_row-=8; c_page++;}	else{}
-		for(row=start_row,j=0; (j<8)&&(row<pixels_x); j++,row--)
+		for(uint8_t bit=0, c_row=row; bit<8; bit++)
 		{
-			if((c_page==pages)&&(j==lastpageheight)&&notwholelastpage)	{break;}	else{}
+			if(notwholelastpage&&(page==pages)&&(bit==lastpageheight))	{break;}	else{}
 			if(Pixel_Status==Pixel_on)
 			{
-				if( (read_progmem(bmp+i) << j) & 0x80)	{ setpixel(pixels_x-1-row,col,Pixel_on);}
-				else if(write_mode == Overwrite) { setpixel(pixels_x-1-row,col,Pixel_off);}	else{}
+				if( (*(bmp+indx) << bit) & 0x80)	{ setpixel(indx_in_page+col, c_row, Pixel_on);}
+				else if(write_mode == Overwrite) 	{ setpixel(indx_in_page+col, c_row, Pixel_off);} else{}
 			}
 			else if(Pixel_Status==Pixel_off)
 			{
-				if( (read_progmem(bmp+i) << j) & 0x80)	{ setpixel(pixels_x-1-row,col,Pixel_off);}
-				else if(write_mode == Overwrite) { setpixel(pixels_x-1-row,col,Pixel_on);} else{}
+				if( (*(bmp+indx) << bit) & 0x80)	{ setpixel(indx_in_page+col, c_row, Pixel_off);}
+				else if(write_mode == Overwrite) 	{ setpixel(indx_in_page+col, c_row, Pixel_on);}	else{}
 			}	else{}
+			c_row--;
 		}
-	}
-}
-#else
-void print_bmp_H(uint8_t col, uint8_t row, constant uint8_t *bmp, uint8_t Pixel_Status, uint8_t write_mode)
-{	//bmp[0]=magasság pixelekben, bmp[1]=szélesség pixelekben
-	uint16_t i=2, j=0, notwholelastpage=0;
-	uint8_t start_col=col, start_row=row, pages=(*(bmp)/8), lastpageheight=(*(bmp)%8), c_page=1;
-	if(lastpageheight!=0) { pages++; notwholelastpage=1;}	else{}
-	for(i=2; ((i-2)<(*(bmp+1)*pages)) && (col<pixels_y+1); i++,col++)
-	{
-		if(((i-2)% *(bmp+1)==0) && ((i-2)!=0))	{col=start_col; start_row-=8; c_page++;}	else{}
-		for(row=start_row,j=0; (j<8)&&(row<pixels_x); j++,row--)
+		indx++;
+		indx_in_page++;
+		if(indx_in_page>=width)
 		{
-			if((c_page==pages)&&(j==lastpageheight)&&notwholelastpage)	{break;}	else{}
-			if(Pixel_Status==Pixel_on)
-			{
-				if( (*(bmp+i) << j) & 0x80)	{ setpixel(pixels_x-1-row,col,Pixel_on);}
-				else if(write_mode == Overwrite) { setpixel(pixels_x-1-row,col,Pixel_off);}	else{}
-			}
-			else if(Pixel_Status==Pixel_off)
-			{
-				if( (*(bmp+i) << j) & 0x80)	{ setpixel(pixels_x-1-row,col,Pixel_off);}
-				else if(write_mode == Overwrite) { setpixel(pixels_x-1-row,col,Pixel_on);}	else{}
-			}	else{}
+			indx_in_page = 0;
+			page++;
+			row-=8;
 		}
 	}
 }
-#endif
 
 uint8_t write_dec_num_float_H(uint8_t col, uint8_t row, float num, uint8_t digits_after_dot, uint8_t Pixel_Status, uint8_t size)
 {
@@ -623,64 +501,6 @@ uint8_t write_dec_num_float_H(uint8_t col, uint8_t row, float num, uint8_t digit
 		col++;
 	}
 	for(i=first_not_zero; i <=4; )
-	{
-		col=write_character_H(col, row, numt[i]+'0', Pixel_Status, size);
-		if(col==lcd_err)	{ return lcd_err;}//nem fér ki a karakter
-		else{ i++; col++;}
-	}
-	return 0;
-}
-
-uint8_t write_dec_num_time_format_H(uint8_t col, uint8_t row, uint8_t num, uint8_t Pixel_Status, uint8_t size, uint8_t align)
-{//egy nullát rak a szám elé ha a szám kisebb mint 10
-	uint8_t i=0, numt[2]={0};
-	numt[0]=((num/10)%10);
-	numt[1]=((num/1)%10);
-	if(align==ALIGN_RIGHT)//annyival arr�bb kezdj�k balra ki�rni amennyi pixel sz�les a sz�msor elv�laszt� oszlopokkal egy�tt
-	{
-		while(i<2)
-		{
-			character_info(numt[i]+'0',size);
-			col-=charwidth;
-			i++;
-		}
-		if(col>(pixels_y-1))	{return lcd_err;}	else{}//alulcsordult
-	}	else{}
-	i=0;
-	while(i<2)
-	{
-		col=write_character_H(col, row, numt[i]+'0', Pixel_Status, size);
-		if(col==lcd_err)	{ return lcd_err;}//nem fér ki a karakter
-		else{ i++; col++;}
-	}
-	return col;
-}
-
-uint8_t write_dec_num_uint8_t_H(uint8_t col, uint8_t row, uint8_t num, uint8_t Pixel_Status, uint8_t size, uint8_t align)
-{
-	uint8_t i=0, numt[3]={0};
-	numt[0]=((num/100)%10);
-	numt[1]=((num/10)%10);
-	numt[2]=((num/1)%10);
-	uint8_t first_not_zero=2;
-	for(i=0; i<3; i++)
-	{
-		if(numt[i])	{first_not_zero=i; break;}	else{}
-	}
-	if(i==3)	{i--;}	else{}
-	if(align==ALIGN_RIGHT)//annyival arr�bb kezdj�k balra ki�rni amennyi pixel sz�les a sz�msor elv�laszt� oszlopokkal egy�tt
-	{
-		col-=((2-i)-1);//ennyivelvel kevesebb space kell
-		while(i<3)
-		{
-			character_info(numt[i]+'0',size);
-			col-=charwidth;
-			i++;
-		}
-		if(col>(pixels_y-1))	{return lcd_err;}	else{}//alulcsordult
-	}	else{}
-	i=first_not_zero;
-	while(i<3)
 	{
 		col=write_character_H(col, row, numt[i]+'0', Pixel_Status, size);
 		if(col==lcd_err)	{ return lcd_err;}//nem fér ki a karakter
@@ -770,6 +590,64 @@ uint8_t write_dec_num_uint16_t_H(uint8_t col, uint8_t row, uint16_t num, uint8_t
 	return 0;
 }
 
+uint8_t write_dec_num_time_format_H(uint8_t col, uint8_t row, uint8_t num, uint8_t Pixel_Status, uint8_t size, uint8_t align)
+{//egy nullát rak a szám elé ha a szám kisebb mint 10
+	uint8_t i=0, numt[2]={0};
+	numt[0]=((num/10)%10);
+	numt[1]=((num/1)%10);
+	if(align==ALIGN_RIGHT)//annyival arr�bb kezdj�k balra ki�rni amennyi pixel sz�les a sz�msor elv�laszt� oszlopokkal egy�tt
+	{
+		while(i<2)
+		{
+			character_info(numt[i]+'0',size);
+			col-=charwidth;
+			i++;
+		}
+		if(col>(pixels_y-1))	{return lcd_err;}	else{}//alulcsordult
+	}	else{}
+	i=0;
+	while(i<2)
+	{
+		col=write_character_H(col, row, numt[i]+'0', Pixel_Status, size);
+		if(col==lcd_err)	{ return lcd_err;}//nem fér ki a karakter
+		else{ i++; col++;}
+	}
+	return col;
+}
+
+uint8_t write_dec_num_uint8_t_H(uint8_t col, uint8_t row, uint8_t num, uint8_t Pixel_Status, uint8_t size, uint8_t align)
+{
+	uint8_t i=0, numt[3]={0};
+	numt[0]=((num/100)%10);
+	numt[1]=((num/10)%10);
+	numt[2]=((num/1)%10);
+	uint8_t first_not_zero=2;
+	for(i=0; i<3; i++)
+	{
+		if(numt[i])	{first_not_zero=i; break;}	else{}
+	}
+	if(i==3)	{i--;}	else{}
+	if(align==ALIGN_RIGHT)//annyival arr�bb kezdj�k balra ki�rni amennyi pixel sz�les a sz�msor elv�laszt� oszlopokkal egy�tt
+	{
+		col-=((2-i)-1);//ennyivelvel kevesebb space kell
+		while(i<3)
+		{
+			character_info(numt[i]+'0',size);
+			col-=charwidth;
+			i++;
+		}
+		if(col>(pixels_y-1))	{return lcd_err;}	else{}//alulcsordult
+	}	else{}
+	i=first_not_zero;
+	while(i<3)
+	{
+		col=write_character_H(col, row, numt[i]+'0', Pixel_Status, size);
+		if(col==lcd_err)	{ return lcd_err;}//nem fér ki a karakter
+		else{ i++; col++;}
+	}
+	return 0;
+}
+
 uint8_t write_text_H(uint8_t col, uint8_t row, char* text, uint8_t Pixel_Status, uint8_t size)
 {
 	while(*(text))
@@ -785,92 +663,12 @@ uint8_t write_text_H(uint8_t col, uint8_t row, char* text, uint8_t Pixel_Status,
 	return 0;
 }
 
-#ifdef _AVR_IO_H_
-uint8_t write_character_H(uint8_t start_col, uint8_t start_row, char character, uint8_t Pixel_Status, uint8_t size)
-{
-	uint8_t row=start_row, col=start_col;
-	uint8_t xi=0, yi=0;//futó változók
-	character_info(character, size);//karakter tömb infó // [0] -line in block	//[1] -width
-	if( ((start_col + charwidth) > pixels_y) )
-	{
-		return lcd_err;
-	}	else{}
-	if(size==size_5x8)
-	{
-		for(xi=0; xi<charwidth; xi++,col++)
-		{
-			for(yi=0,row=start_row; yi<8; yi++,row++)
-			{
-				if(Pixel_Status==Pixel_on)
-				{
-					if( ( read_progmem(_5x8chars+firstcharbyte+xi) >> yi) & 0b1)
-					{
-						setpixel(pixels_x-1-row,col,Pixel_on);
-					}
-					else
-					{
-						setpixel(pixels_x-1-row,col,Pixel_off);
-					}
-				}
-				else if(Pixel_Status==Pixel_off)
-				{
-					if( ( read_progmem(_5x8chars+firstcharbyte+xi) >> yi) & 0b1)
-					{
-						setpixel(pixels_x-1-row,col,Pixel_off);
-					}
-					else
-					{
-						setpixel(pixels_x-1-row,col,Pixel_on);
-					}
-				}	else{}
-			}
-		}
-	}
-	else if(size==size_10x16)
-	{
-		uint8_t chr_half=0;//fut� v�ltoz�; a 10x16 os karakter k�t b�jt magass�g�...
-		start_row += 8;
-		for(chr_half=0; chr_half<2; chr_half++,start_row-=8)
-		{
-			for(xi=0,col=start_col; xi<charwidth; xi++,col++)
-			{
-				for(yi=0,row=start_row; yi<8; yi++,row++)
-				{
-					if(Pixel_Status==Pixel_on)
-					{
-						if( ( read_progmem(_10x16chars+firstcharbyte+(chr_half*10)+xi) >> yi) & 0b1)
-						{
-							setpixel(pixels_x-1-row,col,Pixel_on);
-						}
-						else
-						{
-							setpixel(pixels_x-1-row,col,Pixel_off);
-						}
-					}
-					else if(Pixel_Status==Pixel_off)
-					{
-						if( ( read_progmem(_10x16chars+firstcharbyte+(chr_half*10)+xi) >> yi) & 0b1)
-						{
-							setpixel(pixels_x-1-row,col,Pixel_off);
-						}
-						else
-						{
-							setpixel(pixels_x-1-row,col,Pixel_on);
-						}
-					}	else{}
-				}
-			}
-		}
-	}	else{}
-	return col;
-}
-#else
 uint8_t write_character_H(uint8_t start_col, uint8_t start_row, char character, uint8_t Pixel_Status, uint8_t size)
 {
 	uint8_t row=start_row, col=start_col;
 	uint8_t xi=0, yi=0;//futó változók
 	character_info(character, size);
-	if( ((start_col + charwidth) > pixels_y) )
+	if( ((start_col + charwidth) > pixels_x) )
 	{
 		return lcd_err;
 	}	else{}
@@ -884,22 +682,22 @@ uint8_t write_character_H(uint8_t start_col, uint8_t start_row, char character, 
 				{
 					if( ( *(_5x8chars+firstcharbyte+xi) >> yi) & 0x01)
 					{
-						setpixel(pixels_x-1-row,col,Pixel_on);
+						setpixel(col, row, Pixel_on);
 					}
 					else
 					{
-						setpixel(pixels_x-1-row,col,Pixel_off);
+						setpixel(col, row, Pixel_off);
 					}
 				}
 				else if(Pixel_Status==Pixel_off)
 				{
 					if( ( *(_5x8chars+firstcharbyte+xi) >> yi) & 0x01)
 					{
-						setpixel(pixels_x-1-row,col,Pixel_off);
+						setpixel(col, row, Pixel_off);
 					}
 					else
 					{
-						setpixel(pixels_x-1-row,col,Pixel_on);
+						setpixel(col, row, Pixel_on);
 					}
 				}	else{}
 			}
@@ -908,7 +706,7 @@ uint8_t write_character_H(uint8_t start_col, uint8_t start_row, char character, 
 	else if(size==size_10x16)
 	{
 		uint8_t chr_half=0;//futó változó; a 10x16 os karakter két bájt magasságú...
-		start_row += 8;
+		start_row+=8;
 		for(chr_half=0; chr_half<2; chr_half++,start_row-=8)
 		{
 			for(xi=0,col=start_col; xi<charwidth; xi++,col++)
@@ -919,22 +717,22 @@ uint8_t write_character_H(uint8_t start_col, uint8_t start_row, char character, 
 					{
 						if( ( *(_10x16chars+firstcharbyte+(chr_half*10)+xi) >> yi) & 0x01)
 						{
-							setpixel(pixels_x-1-row,col,Pixel_on);
+							setpixel(col, row, Pixel_on);
 						}
 						else
 						{
-							setpixel(pixels_x-1-row,col,Pixel_off);
+							setpixel(col, row, Pixel_off);
 						}
 					}
 					else if(Pixel_Status==Pixel_off)
 					{
 						if( ( *(_10x16chars+firstcharbyte+(chr_half*10)+xi) >> yi) & 0x01)
 						{
-							setpixel(pixels_x-1-row,col,Pixel_off);
+							setpixel(col, row, Pixel_off);
 						}
 						else
 						{
-							setpixel(pixels_x-1-row,col,Pixel_on);
+							setpixel(col, row, Pixel_on);
 						}
 					}	else{}
 				}
@@ -943,31 +741,9 @@ uint8_t write_character_H(uint8_t start_col, uint8_t start_row, char character, 
 	}	else{}
 	return col;
 }
-#endif
 //____________________print in horizontal orientation________________________________//
 
 
-#ifdef _AVR_IO_H_
-void character_info( char characterf, uint8_t size)
-{	// 0-first byte of char in block	//1-width
-	if( (characterf >= '!') && (characterf <= 'z') )
-	{
-		uint16_t ind=0;
-		switch(size)
-		{
-			case size_5x8:	firstcharbyte = ( (characterf - '!')*5 );
-							while( (read_progmem(_5x8chars+firstcharbyte+ind) != 0xCC) && (ind<5) )	{ ind++;}
-							charwidth = ind;
-							break;
-
-			case size_10x16:	firstcharbyte = ( (characterf - '!')*20 );
-								while( (read_progmem(_10x16chars+firstcharbyte+ind) != 0xCC) && (ind<10) )	{ ind++;}
-								charwidth = ind;
-								break;
-		}
-	}else{}
-}
-#else
 void character_info( char characterf, uint8_t size)
 {
 	if( (characterf >= '!') && (characterf <= 'z') )
@@ -989,7 +765,6 @@ void character_info( char characterf, uint8_t size)
 		}
 	}else{}
 }
-#endif
 
 void fill_rectangle_x1y1_x2y2(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, uint8_t pixel_status)
 {
@@ -1001,10 +776,10 @@ void fill_rectangle_x1y1_x2y2(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, ui
 
 void fill_rectangle_xy_height_width(uint8_t x, uint8_t y, uint8_t height, uint8_t width, uint8_t pixel_status)
 {
-	uint8_t y0=y;
-	for(; y<y0+height; y++)
+	uint8_t yi=y;
+	for(; yi<y+height; yi++)
 	{
-		draw_line_x(x,x+width-1,y,pixel_status);
+		draw_line_x(x,x+width-1,yi,pixel_status);
 	}
 }
 
@@ -1042,20 +817,20 @@ void draw_line_x(uint8_t x1, uint8_t x2,uint8_t y, uint8_t pixel_status)
 
 void setpixel(uint8_t x, uint8_t y, uint8_t Pixel_status)
 {
-	if((x<pixels_x)&&(y<pixels_y))
+	if((y<pixels_y)&&(x<pixels_x))
 	{
 		uint8_t page=0,dotinpage=0;
-		page=x/8;
-		dotinpage=(0x01<<(x%8));
+		page=((pixels_y/8)-1)-(y/8);
+		dotinpage=(0x80>>(y%8));
 		if(Pixel_status == Pixel_on)
 		{
-			disp_mat[y][page] |= dotinpage;
+			disp_mat[x][page] |= dotinpage;
 		}
 		else
 		{
 			if(Pixel_status == Pixel_off)
 			{
-				disp_mat[y][page] &= (~dotinpage);
+				disp_mat[x][page] &= (~dotinpage);
 			}	else{}
 		}
 	}	else{}
@@ -1063,12 +838,12 @@ void setpixel(uint8_t x, uint8_t y, uint8_t Pixel_status)
 
 void delete_disp_mat(void)
 {
-	uint8_t j=0,k=0;
-	for(j=0; j<(pixels_x/8); j++)
+	uint8_t x=0,y=0;
+	for(y=0; y<(pixels_y/8); y++)
 	{
-		for(k=0; k<pixels_y; k++)
+		for(x=0; x<pixels_x; x++)
 		{
-			disp_mat[k][j]=0;
+			disp_mat[x][y]=0;
 		}
 	}
 }
