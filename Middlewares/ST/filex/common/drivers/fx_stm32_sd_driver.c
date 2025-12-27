@@ -268,7 +268,7 @@ static UINT sd_read_data(FX_MEDIA *media_ptr, ULONG start_sector, UINT num_secto
   {
     read_addr = media_ptr->fx_media_driver_buffer;
 
-    for (i = 0; i < num_sectors; i++)
+    for (i = 0; (UINT)i < num_sectors; i++)
     {
       /* Start reading into the scratch buffer */
       status = fx_stm32_sd_read_blocks(FX_STM32_SD_INSTANCE, (UINT *)scratch, (UINT)start_sector++, 1);
@@ -292,7 +292,7 @@ static UINT sd_read_data(FX_MEDIA *media_ptr, ULONG start_sector, UINT num_secto
     }
 
     /* Check if all sectors were read */
-    if (i == num_sectors)
+    if ((UINT)i == num_sectors)
     {
       status = FX_SUCCESS;
     }
@@ -352,7 +352,7 @@ static UINT sd_write_data(FX_MEDIA *media_ptr, ULONG start_sector, UINT num_sect
   {
     write_addr = media_ptr->fx_media_driver_buffer;
 
-    for (i = 0; i < num_sectors; i++)
+    for (i = 0; (UINT)i < num_sectors; i++)
     {
       _fx_utility_memory_copy(write_addr, scratch, FX_STM32_SD_DEFAULT_SECTOR_SIZE);
       write_addr += FX_STM32_SD_DEFAULT_SECTOR_SIZE;
@@ -375,7 +375,7 @@ static UINT sd_write_data(FX_MEDIA *media_ptr, ULONG start_sector, UINT num_sect
        FX_STM32_SD_WRITE_CPLT_NOTIFY();
     }
 
-    if (i == num_sectors)
+    if ((UINT)i == num_sectors)
     {
       status = FX_SUCCESS;
     }

@@ -40,8 +40,8 @@ static  NX_DRIVER_INFORMATION nx_driver_information;
 /* Rounded header size */
 static ULONG header_size;
 
-extern ETH_DMADescTypeDef  DMARxDscrTab[ETH_RX_DESC_CNT]; /* Ethernet Rx DMA Descriptors */
-extern ETH_DMADescTypeDef  DMATxDscrTab[ETH_TX_DESC_CNT]; /* Ethernet Tx DMA Descriptors */
+//extern ETH_DMADescTypeDef  DMARxDscrTab[ETH_RX_DESC_CNT]; /* Ethernet Rx DMA Descriptors */
+//extern ETH_DMADescTypeDef  DMATxDscrTab[ETH_TX_DESC_CNT]; /* Ethernet Tx DMA Descriptors */
 
 
 ETH_TxPacketConfigTypeDef TxPacketCfg;
@@ -1559,6 +1559,7 @@ static UINT  _nx_driver_hardware_initialize(NX_IP_DRIVER *driver_req_ptr)
 static UINT  _nx_driver_hardware_enable(NX_IP_DRIVER *driver_req_ptr)
 {
 
+  UNUSED(driver_req_ptr);
   /* Call STM32 library to start Ethernet operation.  */
   HAL_ETH_Start_IT(&eth_handle);
 
@@ -1612,7 +1613,7 @@ static UINT  _nx_driver_hardware_enable(NX_IP_DRIVER *driver_req_ptr)
 /**************************************************************************/
 static UINT  _nx_driver_hardware_disable(NX_IP_DRIVER *driver_req_ptr)
 {
-
+  UNUSED(driver_req_ptr);
   HAL_ETH_Stop(&eth_handle);
 
   /* Return success!  */
@@ -1675,7 +1676,7 @@ static UINT  _nx_driver_hardware_packet_send(NX_PACKET *packet_ptr)
 
   for (pktIdx = packet_ptr;pktIdx != NX_NULL ; pktIdx = pktIdx -> nx_packet_next)
   {
-    if (i >= ETH_TX_DESC_CNT)
+    if (i >= (int)ETH_TX_DESC_CNT)
     {
       return NX_DRIVER_ERROR;
     }
@@ -1769,7 +1770,7 @@ static UINT  _nx_driver_hardware_packet_send(NX_PACKET *packet_ptr)
 static UINT  _nx_driver_hardware_multicast_join(NX_IP_DRIVER *driver_req_ptr)
 {
 
-
+  UNUSED(driver_req_ptr);
   /* Increase the multicast count.  */
   nx_driver_information.nx_driver_information_multicast_count++;
 
@@ -1824,7 +1825,7 @@ static UINT  _nx_driver_hardware_multicast_join(NX_IP_DRIVER *driver_req_ptr)
 /**************************************************************************/
 static UINT  _nx_driver_hardware_multicast_leave(NX_IP_DRIVER *driver_req_ptr)
 {
-
+  UNUSED(driver_req_ptr);
   /* Decrease the multicast count.  */
   nx_driver_information.nx_driver_information_multicast_count--;
 
@@ -2046,7 +2047,7 @@ void HAL_ETH_RxLinkCallback(void **first_packet_ptr, void **last_packet_ptr, uin
 /**************************************************************************/
 static UINT _nx_driver_hardware_capability_set(NX_IP_DRIVER *driver_req_ptr)
 {
-
+  UNUSED(driver_req_ptr);
   return NX_SUCCESS;
 }
 #endif /* NX_ENABLE_INTERFACE_CAPABILITY */
@@ -2054,7 +2055,7 @@ static UINT _nx_driver_hardware_capability_set(NX_IP_DRIVER *driver_req_ptr)
 
 void HAL_ETH_RxCpltCallback(ETH_HandleTypeDef *heth)
 {
-
+  UNUSED(heth);
   ULONG deffered_events;
   deffered_events = nx_driver_information.nx_driver_information_deferred_events;
 
@@ -2069,6 +2070,7 @@ void HAL_ETH_RxCpltCallback(ETH_HandleTypeDef *heth)
 
 void HAL_ETH_TxCpltCallback(ETH_HandleTypeDef *heth)
 {
+  UNUSED(heth);
   ULONG deffered_events;
   deffered_events = nx_driver_information.nx_driver_information_deferred_events;
 

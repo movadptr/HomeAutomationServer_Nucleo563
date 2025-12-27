@@ -113,6 +113,7 @@ uint8_t write_dec_num_uint32_t_V(uint8_t col, uint8_t row, uint32_t num, uint8_t
 uint8_t write_dec_num_float_V(uint8_t col, uint8_t row, float num, uint8_t digits_after_dot, uint8_t Pixel_Status, uint8_t size)
 {
 	uint8_t i=0, numt[9]={0}, start_col=row, neg=0;
+
 	if(num != fabs(num))
 	//floating point num has sign bit, so besides that bit, the value won't change thus this makes no problem
 	{

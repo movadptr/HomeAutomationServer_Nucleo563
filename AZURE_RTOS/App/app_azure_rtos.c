@@ -60,8 +60,8 @@ static TX_BYTE_POOL tx_app_byte_pool;
 #if defined ( __ICCARM__ )
 #pragma data_alignment=4
 #endif
-__ALIGN_BEGIN static UCHAR  fx_byte_pool_buffer[FX_APP_MEM_POOL_SIZE] __ALIGN_END;
-static TX_BYTE_POOL fx_app_byte_pool;
+//__ALIGN_BEGIN static UCHAR  fx_byte_pool_buffer[FX_APP_MEM_POOL_SIZE] __ALIGN_END;
+//static TX_BYTE_POOL fx_app_byte_pool;
 
 /* USER CODE BEGIN NX_Pool_Buffer */
 /* USER CODE END NX_Pool_Buffer */
@@ -86,7 +86,7 @@ static TX_BYTE_POOL nx_app_byte_pool;
 VOID tx_application_define(VOID *first_unused_memory)
 {
   /* USER CODE BEGIN  tx_application_define_1*/
-
+  UNUSED(first_unused_memory);
   /* USER CODE END  tx_application_define_1 */
 #if (USE_STATIC_ALLOCATION == 1)
   UINT status = TX_SUCCESS;

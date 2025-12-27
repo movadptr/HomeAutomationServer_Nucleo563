@@ -130,6 +130,9 @@ USHORT supported_version = tls_session -> nx_secure_tls_protocol_version;
     NX_PARAMETER_NOT_USED(client_hello_length);
 #endif
 
+  (VOID)client_hello_buffer;
+  (VOID)client_hello_length;
+
     max_extensions = *num_extensions;
     offset = 0;
     *num_extensions = 0;
@@ -569,6 +572,7 @@ UCHAR expected_signature = 0;
     {
         switch (exts[i].nx_secure_tls_extension_id)
         {
+        default: return 0;
         case NX_SECURE_TLS_EXTENSION_EC_GROUPS:
             groups = exts[i].nx_secure_tls_extension_data;
             groups_len = exts[i].nx_secure_tls_extension_data_length;

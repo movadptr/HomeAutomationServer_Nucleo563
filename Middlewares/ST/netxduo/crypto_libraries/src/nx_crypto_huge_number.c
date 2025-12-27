@@ -1823,19 +1823,23 @@ UINT mask;
     case 4:
         *ptr++ = (UCHAR)(random_number & 0xFF);
         random_number >>= 8;
-        /* fallthrough */
+    //fallthrough
+    //no break
     case 3:
         *ptr++ = (UCHAR)(random_number & 0xFF);
         random_number >>= 8;
-        /* fallthrough */
+    //fallthrough
+    //no break
     case 2:
         *ptr++ = (UCHAR)(random_number & 0xFF);
         random_number >>= 8;
-        /* fallthrough */
+    //fallthrough
+    //no break
     case 1:
         *ptr++ = (UCHAR)(random_number & 0xFF);
         random_number >>= 8;
-        /* fallthrough */
+    //fallthrough
+    //no break
     default:
         break;
     }

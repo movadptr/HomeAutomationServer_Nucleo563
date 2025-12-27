@@ -2753,6 +2753,9 @@ NXD_ADDRESS     source_ip_address, destination_ip_address;
 
         return NX_SUCCESS;
     }
+
+    //shitty lint
+    return NX_SUCCESS;
 }
 
 

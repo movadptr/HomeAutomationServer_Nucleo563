@@ -665,13 +665,13 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
 			N_MasterReadNodeData(2, N_ROOM_TEMPERATURE_SENSOR, &cnv.u);
 			TempRoom2 = cnv.f;
 
-			sprintf(txstr,"INFO_Server datetime:\t%s\nBoot datetime:\t\t\t%s\nServer temp:\t%.2f°C\nRoom temp1:\t\t%.2f°C\nRoom temp2:\t\t%.2f°C\nOut temp:\t\t\t\t%.2f°C",
-					ts_str,
-					HAdata.time_update_after_boot_timestamp!=0?HAdata.time_update_after_boot_timestamp:"no_ts",
-					HAdata.temperature_server,
-					TempRoom1,
-					TempRoom2,
-					TempOut);
+			snprintf(txstr, 200, "INFO_Server datetime:\t%s\nBoot datetime:\t\t\t%s\nServer temp:\t%.2f°C\nRoom temp1:\t\t%.2f°C\nRoom temp2:\t\t%.2f°C\nOut temp:\t\t\t\t%.2f°C",
+					 ts_str,
+					 HAdata.time_update_after_boot_timestamp!=0?HAdata.time_update_after_boot_timestamp:"no_ts",
+					 HAdata.temperature_server,
+					 TempRoom1,
+					 TempRoom2,
+					 TempOut);
 
 			ret = createAndSendUDPPacket(source_ip_address, source_port, txstr);
 		}

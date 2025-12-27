@@ -786,7 +786,7 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 
 	{//check if any alarm matches current time, then execute it
 		//TODO make a more robust implementation, so if an sntp update comes and sets the time after the alarm, it won't be skipped
-		uint32_t current_ts = (RTC_Time.Hours*60*60)+(RTC_Time.Minutes*60)+RTC_Time.Seconds;
+		uint32_t current_ts = (RTC_Bcd2ToByte(RTC_Time.Hours)*60*60)+(RTC_Bcd2ToByte(RTC_Time.Minutes)*60)+RTC_Bcd2ToByte(RTC_Time.Seconds);
 		int8_t alarm_indx = (-1);//so at the first call it will become zero
 		while(1)
 		{
@@ -876,8 +876,8 @@ void init_alarms(uint32_t* HAalarms_F)
 {
 	//set default values (second based timestamp, containing only hours minutes and seconds)
 	//									  hour        min
-	HAalarms_F[HA_SHADER_ALARM_MIDDAY] = ((12*60*60)+(30*60));
-	HAalarms_F[HA_SHADER_ALARM_EVENING] = ((19*60*60)+(30*60));
+	HAalarms_F[HA_SHADER_ALARM_MIDDAY] = ((8*60*60)+(30*60));
+	HAalarms_F[HA_SHADER_ALARM_EVENING] = ((17*60*60)+(52*60));
 }
 
 char* StrAllocAndCpy(char* str)
@@ -956,7 +956,7 @@ time_t get_local_rtc_time_date(RTC_DateTypeDef* RTC_Date_p,  RTC_TimeTypeDef* RT
 	timestamp2RTCDateTime(timestamp, RTC_Date_p, RTC_Time_p);
 #endif//(TIME_ZONE | DAYLIGHTSAVE)
 
-	//covert bcd values to string (still better than sprintf)
+	//convert BCD values to string (still better than sprintf)
 	if(tmps != NULL)
 	{
 		tmps[0] = '2';

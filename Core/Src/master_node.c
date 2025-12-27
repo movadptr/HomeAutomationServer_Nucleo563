@@ -49,7 +49,7 @@ int8_t N_MasterReadNodeData(uint8_t nodeaddr, uint8_t function, volatile uint32_
 	uint8_t rxdata[N_MAX_RX_BUFF] = {0};
 
 	HAL_UART_Transmit(&huart2, txdata, 8, 100);
-	HAL_UARTEx_ReceiveToIdle(&huart2, rxdata, N_MAX_RX_BUFF, &rxlen, 1000);
+	HAL_UARTEx_ReceiveToIdle(&huart2, rxdata, N_MAX_RX_BUFF, &rxlen, 200);
 	*data = ((rxdata[6]<<0) | (rxdata[8]<<8) | (rxdata[10]<<16) | (rxdata[12]<<24));//save received data
 
 	return 0;
@@ -94,7 +94,7 @@ void N_MasterReadFirstRelevantNodeData(uint8_t function, volatile uint32_t** dat
 				txdata[0] = (nodeindx+1);
 				txdata[4] = function;
 				HAL_UART_Transmit(&huart2, txdata, 8, 100);
-				HAL_UARTEx_ReceiveToIdle(&huart2, rxdata, N_MAX_RX_BUFF, &rxlen, 1000);
+				HAL_UARTEx_ReceiveToIdle(&huart2, rxdata, N_MAX_RX_BUFF, &rxlen, 200);
 				(*node_data_ppp)[nodeindx][cindx] = ((rxdata[6]<<0) | (rxdata[8]<<8) | (rxdata[10]<<16) | (rxdata[12]<<24));//save received data
 				if(data!=NULL)
 				{
@@ -127,7 +127,7 @@ void N_MasterRefreshAllNodeData(volatile uint8_t*** capabilities_ppp, volatile u
 			txdata[0] = (nodeindx+1);
 			txdata[4] = (*capabilities_ppp)[nodeindx][cindx];
 			HAL_UART_Transmit(&huart2, txdata, 8, 100);
-			HAL_UARTEx_ReceiveToIdle(&huart2, rxdata, N_MAX_RX_BUFF, &rxlen, 1000);
+			HAL_UARTEx_ReceiveToIdle(&huart2, rxdata, N_MAX_RX_BUFF, &rxlen, 200);
 			(*node_data_ppp)[nodeindx][cindx] = ((rxdata[6]<<0) | (rxdata[8]<<8) | (rxdata[10]<<16) | (rxdata[12]<<24));
 			memset(rxdata, 0, N_MAX_RX_BUFF);
 		}
@@ -154,7 +154,7 @@ void N_MasterInitNodeNetwork(volatile uint8_t*** capabilitiesf_ppp, volatile uin
 	{
 		tx[0] = addr+1;
 		HAL_UART_Transmit(&huart2, tx, 8, 100);
-		HAL_UARTEx_ReceiveToIdle(&huart2, rx, N_MAX_RX_BUFF, (uint16_t*)&rxlen, 1000);
+		HAL_UARTEx_ReceiveToIdle(&huart2, rx, N_MAX_RX_BUFF, (uint16_t*)&rxlen, 200);
 		N_MasterStoreCapabilities(rx, rxlen*2, capabilitiesf_ppp, addr, node_data_ppp);
 		addr++;
 		memset(rx, 0, N_MAX_RX_BUFF);

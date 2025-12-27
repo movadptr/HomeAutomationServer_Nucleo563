@@ -1760,7 +1760,7 @@ __weak void HAL_RCC_CSSCallback(void)
   */
 void HAL_RCC_ConfigAttributes(uint32_t Item, uint32_t Attributes)
 {
-
+  UNUSED(Item);
   /* Check the parameters */
   assert_param(IS_RCC_ATTRIBUTES(Attributes));
 
@@ -1840,6 +1840,7 @@ void HAL_RCC_ConfigAttributes(uint32_t Item, uint32_t Attributes)
   */
 HAL_StatusTypeDef HAL_RCC_GetConfigAttributes(uint32_t Item, uint32_t *pAttributes)
 {
+  UNUSED(Item);
   uint32_t attributes;
 
   /* Check null pointer */

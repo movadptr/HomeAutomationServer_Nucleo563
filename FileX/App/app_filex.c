@@ -137,7 +137,7 @@ UINT MX_FileX_Init(VOID *memory_ptr)
   UINT sd_status = FX_SUCCESS;
 
 /* USER CODE BEGIN fx_app_thread_entry 0*/
-
+  UNUSED(thread_input);
 /* USER CODE END fx_app_thread_entry 0*/
 
 /* Format the SRAM_BASE memory as FAT */

@@ -10085,6 +10085,9 @@ UINT                 mname_string_length;
                 /* Return success.  */
                 return (NX_DNS_SUCCESS);
             }    
+
+            //shitty lint
+            default: return(NX_DNS_ERROR);
 #ifdef NX_DNS_ENABLE_EXTENDED_RR_TYPES
             case NX_DNS_RR_TYPE_NS:   
             {
@@ -10240,7 +10243,8 @@ UINT                 mname_string_length;
                        
                 /* Return success.  */
                 return (NX_DNS_SUCCESS);
-            }                         
+            }
+
 #endif /* NX_DNS_ENABLE_EXTENDED_RR_TYPES  */
         }
 

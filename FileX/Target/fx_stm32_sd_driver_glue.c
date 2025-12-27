@@ -164,6 +164,7 @@ void HAL_SD_TxCpltCallback(SD_HandleTypeDef *hsd)
 {
   /* USER CODE BEGIN PRE_TX_CMPLT */
 
+  UNUSED(hsd);
   /* USER CODE END PRE_TX_CMPLT */
 
   tx_semaphore_put(&sd_tx_semaphore);
@@ -183,6 +184,7 @@ void HAL_SD_RxCpltCallback(SD_HandleTypeDef *hsd)
 
    /* USER CODE BEGIN PRE_RX_CMPLT */
 
+  UNUSED(hsd);
   /* USER CODE END PRE_RX_CMPLT */
 
   tx_semaphore_put(&sd_rx_semaphore);
