@@ -54,6 +54,7 @@ typedef struct
 	float temperature_server;
 	time_t last_action_timestamp;
 	char* time_update_after_boot_timestamp;
+	char ip_change_timestamp[30];
 	uint8_t screen_state;
 } HAdata_S;
 
@@ -75,6 +76,8 @@ typedef struct
 /* USER CODE BEGIN EM */
 #define TIME_ZONE		2//+2 hours to UTC
 #define DAYLIGHTSAVE	1//enable daylightsaving//to disable comment out the define
+
+#define TIMESTAMP_STR_BUFF_LEN	30U
 /* USER CODE END EM */
 
 /* Exported functions prototypes ---------------------------------------------*/

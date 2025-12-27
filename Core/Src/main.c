@@ -173,6 +173,8 @@ int main(void)
 
 	N_MasterInitNodeNetwork(&node_capabilities_pp, &node_data_pp);
 
+	HAdata.time_update_after_boot_timestamp = NULL;
+
 	MX_ThreadX_Init();
 	// We should never get here as control is now taken by the scheduler
 
@@ -765,7 +767,7 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 {
 	RTC_DateTypeDef RTC_Date = {0};
 	RTC_TimeTypeDef RTC_Time = {0};
-	char TimS[30] = {0};
+	char TimS[TIMESTAMP_STR_BUFF_LEN] = {0};
 	time_t ts = 0;
 	//get time  date data from rtc
 	HAL_RTC_GetTime(hrtc,&RTC_Time,RTC_FORMAT_BCD);
@@ -877,7 +879,7 @@ void init_alarms(uint32_t* HAalarms_F)
 	//set default values (second based timestamp, containing only hours minutes and seconds)
 	//									  hour        min
 	HAalarms_F[HA_SHADER_ALARM_MIDDAY] = ((8*60*60)+(30*60));
-	HAalarms_F[HA_SHADER_ALARM_EVENING] = ((17*60*60)+(52*60));
+	HAalarms_F[HA_SHADER_ALARM_EVENING] = ((17*60*60)+(30*60));
 }
 
 char* StrAllocAndCpy(char* str)

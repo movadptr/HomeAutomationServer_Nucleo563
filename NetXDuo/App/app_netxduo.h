@@ -118,6 +118,8 @@ typedef struct
 #define PRINT_CNX_SUCC()          do { \
                                         printf("SNTP client connected to NTP server : < %s > \n\r", SNTP_SERVER_NAME);\
                                      } while(0)
+
+#define INFO_STR_LEN	250U
 /* USER CODE END EM */
 
 /* Exported functions prototypes ---------------------------------------------*/

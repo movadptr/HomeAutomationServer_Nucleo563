@@ -93,7 +93,6 @@ NX_SECURE_TLS_SESSION tls_session;
 #define NX_WEB_HTTP_SERVER_SESSION_MAX          2
 #endif
 static CHAR crypto_metadata_client[20000 * NX_WEB_HTTP_SERVER_SESSION_MAX];
-static NX_SECURE_X509_CERT trusted_certificate;
 // Trusted CA certificate for https Client
 #define ca_cert_der 		gts_root_r1_der
 #define ca_cert_der_len 	gts_root_r1_der_len
@@ -587,12 +586,10 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
 
   RTC_DateTypeDef RTC_Date = {0};
   RTC_TimeTypeDef RTC_Time = {0};
-  char ts_str[30]={0};
+  char ts_str[TIMESTAMP_STR_BUFF_LEN]={0};
   time_t ts_data;
 
   UNUSED(thread_input);
-
-  HAdata.time_update_after_boot_timestamp = NULL;
 
   //create the UDP socket
   ret = nx_udp_socket_create(&NetXDuoEthIpInstance, &UDPSocket, "UDP Server Socket", NX_IP_NORMAL, NX_FRAGMENT_OKAY, NX_IP_TIME_TO_LIVE, QUEUE_MAX_SIZE);
@@ -647,27 +644,26 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
 
 		if(strcmp((char*)data_buffer, HA_SECR_STR1) == 0)
 		{
-			char txstr[200]={0};
-			volatile uint32_t* temperature_p = NULL;
+			char txstr[INFO_STR_LEN] = {0};
 			float TempOut=0, TempRoom1 = 0, TempRoom2 = 0;
 			union{float f; uint32_t u;}cnv;
 
-			N_MasterReadFirstRelevantNodeData(N_OUTSIDE_TEMPERATURE_SENSOR, &temperature_p, &node_capabilities_pp, &node_data_pp);
-			if(temperature_p != NULL)	{ cnv.u = *(temperature_p);}
-			else{ cnv.u = 0;}
+			//N_MasterReadFirstRelevantNodeData(N_OUTSIDE_TEMPERATURE_SENSOR, &temperature_p, &node_capabilities_pp, &node_data_pp);
+			N_MasterGetFirstRelevantNodeData(N_OUTSIDE_TEMPERATURE_SENSOR, &cnv.u, &node_capabilities_pp, &node_data_pp);
 			TempOut = cnv.f;
 
-			N_MasterReadFirstRelevantNodeData(N_ROOM_TEMPERATURE_SENSOR, &temperature_p, &node_capabilities_pp, &node_data_pp);
-			if(temperature_p != NULL)	{ cnv.u = *(temperature_p);}
-			else{ cnv.u = 0;}
+			//N_MasterReadFirstRelevantNodeData(N_ROOM_TEMPERATURE_SENSOR, &temperature_p, &node_capabilities_pp, &node_data_pp);
+			N_MasterGetFirstRelevantNodeData(N_ROOM_TEMPERATURE_SENSOR, &cnv.u, &node_capabilities_pp, &node_data_pp);
 			TempRoom1 = cnv.f;
 
-			N_MasterReadNodeData(2, N_ROOM_TEMPERATURE_SENSOR, &cnv.u);
+			//N_MasterReadNodeData(2, N_ROOM_TEMPERATURE_SENSOR, &cnv.u);
+			N_GetNodeData((uint32_t*)node_data_pp[2-1], &cnv.u, N_ROOM_TEMPERATURE_SENSOR, (uint8_t*)node_capabilities_pp[2-1]);
 			TempRoom2 = cnv.f;
 
-			snprintf(txstr, 200, "INFO_Server datetime:\t%s\nBoot datetime:\t\t\t%s\nServer temp:\t%.2f°C\nRoom temp1:\t\t%.2f°C\nRoom temp2:\t\t%.2f°C\nOut temp:\t\t\t\t%.2f°C",
+			snprintf(txstr, INFO_STR_LEN, "INFO_Server datetime:\t%s\nBoot datetime:\t\t\t%s\nIP update:\t\t\t\t\t\t%s\nServer temp:\t\t%.2f°C\nRoom temp1:\t\t%.2f°C\nRoom temp2:\t\t%.2f°C\nOut temp:\t\t\t\t\t%.2f°C",
 					 ts_str,
-					 HAdata.time_update_after_boot_timestamp!=0?HAdata.time_update_after_boot_timestamp:"no_ts",
+					 HAdata.time_update_after_boot_timestamp!=NULL?HAdata.time_update_after_boot_timestamp:"no_ts",
+					 HAdata.ip_change_timestamp[0]!=0?HAdata.ip_change_timestamp:"no_ts",
 					 HAdata.temperature_server,
 					 TempRoom1,
 					 TempRoom2,
@@ -688,14 +684,24 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
 
 		if(strncmp((char*)data_buffer, HA_SECR_STR4, HA_SECR_STR4_LEN) == 0)
 		{
-			union
-			{
-				uint32_t u;
-				uint32_t i;
-			}cnv;
+			union{uint32_t u; int32_t i;}cnv;
 
 			cnv.i = atoi((const char*)data_buffer+HA_SECR_STR4_LEN);//convert pos from string to num
 			N_WriteEveryRelevantNode(N_EAST_SHADER, cnv.u, &node_capabilities_pp, &node_data_pp);
+		}
+		if(strcmp((char*)data_buffer, HA_SECR_STR9) == 0)
+		{
+			union{uint32_t u; int i;}cnv;
+			char txstr[20] = {0};
+			char tmpvals[10] = {0};
+
+			N_MasterGetFirstRelevantNodeData(N_EAST_SHADER, &cnv.u, &node_capabilities_pp, &node_data_pp);
+			snprintf(tmpvals, 10, "%i", cnv.i);
+			memcpy(txstr, HA_SECR_STR9, HA_SECR_STR9_LEN);
+			memcpy(txstr+HA_SECR_STR9_LEN, tmpvals, 10);
+			txstr[20-1] = 0;//bab
+
+			createAndSendUDPPacket(source_ip_address, source_port, txstr);
 		}
 
 		//resend the same packet to the client
@@ -778,14 +784,14 @@ static VOID App_HTTPS_Thread_Entry(ULONG thread_input)
 	char* public_ip_str;
 	RTC_DateTypeDef RTC_Date = {0};
 	RTC_TimeTypeDef RTC_Time = {0};
-	char tmps[30]={0};
+	char tmps[TIMESTAMP_STR_BUFF_LEN]={0};
 
 	while(1)
 	{
 		//suspend thread and wait for semaphore put
 		tx_semaphore_get(&HTTPSSemaphore, NX_WAIT_FOREVER);
 
-		//get time  date data from rtc
+		//get time date data from rtc
 		HAL_RTC_GetTime(&RtcHandle,&RTC_Time,RTC_FORMAT_BCD);
 		HAL_RTC_GetDate(&RtcHandle,&RTC_Date,RTC_FORMAT_BCD);
 		get_local_rtc_time_date(&RTC_Date, &RTC_Time, tmps);
@@ -928,6 +934,8 @@ static VOID App_HTTPS_Thread_Entry(ULONG thread_input)
 
 			//process
 			//no response expected from patch request
+			//save update time
+			strncpy(HAdata.ip_change_timestamp, tmps, TIMESTAMP_STR_BUFF_LEN);
 
 			//cleanup
 			free(patch_ip_str);
@@ -947,15 +955,16 @@ static VOID App_HTTPS_Thread_Entry(ULONG thread_input)
 
 		{//get fdr info if changed //see comment in secr
 			uint32_t oldval = 0;
-			volatile uint32_t* newval = NULL;
+			uint32_t newval = 0;
 
 			N_MasterGetFirstRelevantNodeData(N_SECR_FDPS, &oldval, &node_capabilities_pp, &node_data_pp);
-			N_MasterReadFirstRelevantNodeData(N_SECR_FDPS, &newval, &node_capabilities_pp, &node_data_pp);
+			N_MasterRefreshAllNodeData(&node_capabilities_pp, &node_data_pp);//Read all node data here periodically
+			N_MasterGetFirstRelevantNodeData(N_SECR_FDPS, &newval, &node_capabilities_pp, &node_data_pp);
 
-			if(oldval != (*newval))
+			if(oldval != newval)
 			{
 				char state_str[8] = {0};
-				if((*newval) == 0)	{ strcpy(state_str, HA_SECR_STR13);}
+				if(newval == 0)	{ strcpy(state_str, HA_SECR_STR13);}
 				else{ strcpy(state_str, HA_SECR_STR14);}
 
 				//init
