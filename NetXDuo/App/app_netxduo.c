@@ -56,11 +56,11 @@ NX_IP          NetXDuoEthIpInstance;
 TX_SEMAPHORE   DHCPSemaphore;
 NX_DHCP        DHCPClient;
 /* USER CODE BEGIN PV */
-TX_THREAD AppUsartThread;
 TX_THREAD AppHTTPSclientThread;
 TX_THREAD AppSNTPThread;
 TX_THREAD AppUDPThread;
 TX_THREAD AppLinkThread;
+TX_THREAD AppRTCAlarmAThread;
 
 // Define NetX global data structures
 NX_UDP_SOCKET UDPSocket;
@@ -84,6 +84,11 @@ extern volatile uint32_t** node_data_pp;
 uint8_t time_update_after_boot_flag = 0;
 
 TX_SEMAPHORE HTTPSSemaphore;
+TX_SEMAPHORE RTCALARMASemaphore;
+extern TX_MUTEX uart2_mutex;
+
+uint32_t HAalarms[HA_ALARM_LEN] = {0};
+volatile uint8_t https_trigger_presc = 0;
 
 #define TLS_PACKET_BUFFER_SIZE     18000
 UCHAR tls_packet_buffer[TLS_PACKET_BUFFER_SIZE];
@@ -111,6 +116,7 @@ extern NX_SECURE_TLS_CRYPTO nx_crypto_tls_ciphers;
 static VOID App_Main_Thread_Entry (ULONG thread_input);
 static VOID ip_address_change_notify_callback(NX_IP *ip_instance, VOID *ptr);
 /* USER CODE BEGIN PFP */
+static VOID App_RTC_ALARM_A_Thread_Entry(ULONG thread_input);
 static VOID App_HTTPS_Thread_Entry(ULONG thread_input);
 static VOID App_UDP_Thread_Entry(ULONG thread_input);
 static void App_SNTP_Thread_Entry(ULONG info);
@@ -349,6 +355,23 @@ UINT MX_NetXDuo_Init(VOID *memory_ptr)
 
   	tx_semaphore_create(&HTTPSSemaphore, "HTTPS_semaphore", 0);
 
+
+  	// Allocate the memory for AppRTCAlarmAThread thread
+  	if (tx_byte_allocate(byte_pool, (VOID **) &pointer, 4* DEFAULT_MEMORY_SIZE, TX_NO_WAIT) != TX_SUCCESS)
+  	{
+  		return TX_POOL_ERROR;
+  	}
+  	// create the AppRTCAlarmAThread thread
+  	ret = tx_thread_create(&AppRTCAlarmAThread, "App RTC Alarm A Thread", App_RTC_ALARM_A_Thread_Entry, 0, pointer, 4 * DEFAULT_MEMORY_SIZE,
+  							DEFAULT_PRIORITY, DEFAULT_PRIORITY, TX_NO_TIME_SLICE, TX_DONT_START);
+  	if (ret != TX_SUCCESS)
+  	{
+  		return TX_THREAD_ERROR;
+  	}
+
+  	tx_semaphore_create(&RTCALARMASemaphore, "RTC_ALARM_A_semaphore", 0);
+  	tx_mutex_create(&uart2_mutex, "uart2 mutex", 1);
+
   /* USER CODE END MX_NetXDuo_Init */
 
   return ret;
@@ -433,8 +456,8 @@ static VOID App_Main_Thread_Entry (ULONG thread_input)
 	//the network is correctly initialized, start the HTTPS client thread
 	tx_thread_resume(&AppHTTPSclientThread);
 
-	//start usart thread
-	tx_thread_resume(&AppUsartThread);
+	//start alarm A thread
+	tx_thread_resume(&AppRTCAlarmAThread);
 
     //this thread is not needed any more, we relinquish it
     tx_thread_relinquish();
@@ -648,15 +671,12 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
 			float TempOut=0, TempRoom1 = 0, TempRoom2 = 0;
 			union{float f; uint32_t u;}cnv;
 
-			//N_MasterReadFirstRelevantNodeData(N_OUTSIDE_TEMPERATURE_SENSOR, &temperature_p, &node_capabilities_pp, &node_data_pp);
 			N_MasterGetFirstRelevantNodeData(N_OUTSIDE_TEMPERATURE_SENSOR, &cnv.u, &node_capabilities_pp, &node_data_pp);
 			TempOut = cnv.f;
 
-			//N_MasterReadFirstRelevantNodeData(N_ROOM_TEMPERATURE_SENSOR, &temperature_p, &node_capabilities_pp, &node_data_pp);
 			N_MasterGetFirstRelevantNodeData(N_ROOM_TEMPERATURE_SENSOR, &cnv.u, &node_capabilities_pp, &node_data_pp);
 			TempRoom1 = cnv.f;
 
-			//N_MasterReadNodeData(2, N_ROOM_TEMPERATURE_SENSOR, &cnv.u);
 			N_GetNodeData((uint32_t*)node_data_pp[2-1], &cnv.u, N_ROOM_TEMPERATURE_SENSOR, (uint8_t*)node_capabilities_pp[2-1]);
 			TempRoom2 = cnv.f;
 
@@ -701,11 +721,12 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
 			memcpy(txstr+HA_SECR_STR9_LEN, tmpvals, 10);
 			txstr[20-1] = 0;//bab
 
-			createAndSendUDPPacket(source_ip_address, source_port, txstr);
+			(void)createAndSendUDPPacket(source_ip_address, source_port, txstr);
 		}
 
 		//resend the same packet to the client
 		//ret = nx_udp_socket_send(&UDPSocket, data_packet, source_ip_address, source_port);
+
 		//if we are not resending the packet, we have to release it manually
 		ret = nx_packet_release(data_packet);
 
@@ -1016,6 +1037,96 @@ static VOID App_HTTPS_Thread_Entry(ULONG thread_input)
 				}
 			}
 		}
+	}
+}
+
+static VOID App_RTC_ALARM_A_Thread_Entry(ULONG thread_input)
+{
+	UNUSED(thread_input);
+
+	RTC_DateTypeDef RTC_Date = {0};
+	RTC_TimeTypeDef RTC_Time = {0};
+	time_t ts = 0;
+	char TimS[TIMESTAMP_STR_BUFF_LEN] = {0};
+
+	init_alarms(HAalarms);
+
+	while(1)
+	{
+		//suspend thread and wait for semaphore put
+		tx_semaphore_get(&RTCALARMASemaphore, NX_WAIT_FOREVER);
+
+		//get time  date data from rtc
+		HAL_RTC_GetTime(&RtcHandle,&RTC_Time,RTC_FORMAT_BCD);
+		HAL_RTC_GetDate(&RtcHandle,&RTC_Date,RTC_FORMAT_BCD);
+		//convert to local time
+		ts = get_local_rtc_time_date(&RTC_Date, &RTC_Time, TimS);
+
+		https_trigger_presc++;
+		if(https_trigger_presc >= HTTPS_TRIG_PRESC_CMP)
+		{
+			https_trigger_presc = 0;
+			if(HAdata.time_update_after_boot_timestamp != NULL)//if this is a valid stuff then everything started correctly, and https can be started
+			{
+				tx_semaphore_put(&HTTPSSemaphore);
+			}else{}
+		}else{}
+
+		{//check if any alarm matches current time, then execute it
+			//TODO make a more robust implementation, so if an sntp update comes and sets the time after the alarm, it won't be skipped
+			uint32_t current_ts = (RTC_Bcd2ToByte(RTC_Time.Hours)*60*60)+(RTC_Bcd2ToByte(RTC_Time.Minutes)*60)+RTC_Bcd2ToByte(RTC_Time.Seconds);
+			int8_t alarm_indx = (-1);//so at the first call it will become zero
+			while(1)
+			{
+				alarm_indx = check_alarm(current_ts, HAalarms, alarm_indx+1);
+				if(alarm_indx == (-1))//no more alarm
+				{
+					break;
+				}
+				else
+				{
+					switch(alarm_indx)
+					{
+						case HA_SHADER_ALARM_MIDDAY:	N_WriteEveryRelevantNode(N_EAST_SHADER, N_SHADER_OPEN_POS, &node_capabilities_pp, &node_data_pp);
+														break;
+						case HA_SHADER_ALARM_EVENING:	N_WriteEveryRelevantNode(N_EAST_SHADER, N_SHADER_CLOSED_POS, &node_capabilities_pp, &node_data_pp);
+														break;
+						default: break;
+					}
+				}
+			}
+		}
+
+		//read out srver PCB temperature sensor
+		HAdata.temperature_server = convertLM71RawVal2Temp(LM71_read(SPI_TEMP_ROOM_CS_Pin, SPI_TEMP_ROOM_CS_GPIO_Port));
+
+		//if something happened then turn on the screen for 10s
+		{
+	#ifdef DEBUG
+			printf("%s\n\r", TimS);
+			printf("Server temperature= %f\n\r", HAdata.temperature_server);
+	#endif
+			if( (ts < (HAdata.last_action_timestamp+10)))
+			{
+				if(HAdata.screen_state == 0)
+				{
+					HAdata.screen_state = 1;
+					oled_send_cmd(CMD_Set_Disp_ON);
+				}
+				update_screen(TimS);//update the small oled
+			}
+			else
+			{
+				if(HAdata.screen_state == 1)
+				{
+					HAdata.screen_state = 0;
+					oled_send_cmd(CMD_Set_Disp_Off);
+				}
+			}
+		}
+
+		//reset the yellow LED
+		HAL_GPIO_WritePin(YELLOW_LED_GPIO_Port, YELLOW_LED_Pin, GPIO_PIN_RESET);
 	}
 }
 

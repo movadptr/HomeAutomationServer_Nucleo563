@@ -9,12 +9,15 @@
 
 #include "master_node.h"
 #include "LM71_SPI_temp_sensor.h"
+#include "tx_api.h"
 
 ///variables//////////////////////////////////////////////////
 
 extern UART_HandleTypeDef huart2;
 volatile uint8_t** node_capabilities_pp = NULL;
 volatile uint32_t** node_data_pp = NULL;
+
+TX_MUTEX uart2_mutex;
 
 ///functions//////////////////////////////////////////////////
 
@@ -23,6 +26,8 @@ volatile uint32_t** node_data_pp = NULL;
  */
 int8_t N_MasterWriteNodeData(uint8_t nodeaddr, uint8_t function, uint32_t data)
 {
+	tx_mutex_get(&uart2_mutex, TX_NO_WAIT);
+
 	if((nodeaddr == 0) || (nodeaddr > N_NODE_AMOUNT))//bad addr
 	{
 		return -1;
@@ -30,6 +35,8 @@ int8_t N_MasterWriteNodeData(uint8_t nodeaddr, uint8_t function, uint32_t data)
 
 	uint8_t txdata[16] = {nodeaddr, N_ADDR_MSB, N_CMD_WRITE, N_DATA_MSB, function, N_DATA_MSB, (uint8_t)((data>>0)&0xff), N_DATA_MSB, (uint8_t)((data>>8)&0xff), N_DATA_MSB, (uint8_t)((data>>16)&0xff), N_DATA_MSB, (uint8_t)((data>>24)&0xff), N_DATA_MSB, 0xff, 0x01};
 	HAL_UART_Transmit(&huart2, txdata, 8, 100);
+
+	tx_mutex_put(&uart2_mutex);
 
 	return 0;
 }
@@ -39,6 +46,8 @@ int8_t N_MasterWriteNodeData(uint8_t nodeaddr, uint8_t function, uint32_t data)
  */
 int8_t N_MasterReadNodeData(uint8_t nodeaddr, uint8_t function, volatile uint32_t* data)
 {
+	tx_mutex_get(&uart2_mutex, TX_NO_WAIT);
+
 	if((nodeaddr == 0) || (nodeaddr > N_NODE_AMOUNT))//bad addr
 	{
 		return -1;
@@ -52,6 +61,8 @@ int8_t N_MasterReadNodeData(uint8_t nodeaddr, uint8_t function, volatile uint32_
 	HAL_UARTEx_ReceiveToIdle(&huart2, rxdata, N_MAX_RX_BUFF, &rxlen, 200);
 	*data = ((rxdata[6]<<0) | (rxdata[8]<<8) | (rxdata[10]<<16) | (rxdata[12]<<24));//save received data
 
+	tx_mutex_put(&uart2_mutex);
+
 	return 0;
 }
 
@@ -60,6 +71,8 @@ int8_t N_MasterReadNodeData(uint8_t nodeaddr, uint8_t function, volatile uint32_
  */
 void N_WriteEveryRelevantNode(uint8_t function, uint32_t data, volatile uint8_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp)
 {
+	tx_mutex_get(&uart2_mutex, TX_NO_WAIT);
+
 	uint8_t txdata[16] = {0x00, N_ADDR_MSB, N_CMD_WRITE, N_DATA_MSB, function, N_DATA_MSB, (uint8_t)((data>>0)&0xff), N_DATA_MSB, (uint8_t)((data>>8)&0xff), N_DATA_MSB, (uint8_t)((data>>16)&0xff), N_DATA_MSB, (uint8_t)((data>>24)&0xff), N_DATA_MSB, 0xff, 0x01};
 
 	for(uint8_t nodeindx=0; nodeindx<N_NODE_AMOUNT; nodeindx++)
@@ -71,9 +84,11 @@ void N_WriteEveryRelevantNode(uint8_t function, uint32_t data, volatile uint8_t*
 				txdata[0] = (nodeindx+1);
 				HAL_UART_Transmit(&huart2, txdata, 8, 100);
 				(*node_data_ppp)[nodeindx][cindx] = data;//also store it locally
-			}
+			}else{}
 		}
 	}
+
+	tx_mutex_put(&uart2_mutex);
 }
 
 /*
@@ -81,6 +96,8 @@ void N_WriteEveryRelevantNode(uint8_t function, uint32_t data, volatile uint8_t*
  */
 void N_MasterReadFirstRelevantNodeData(uint8_t function, volatile uint32_t** data, volatile uint8_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp)
 {
+	tx_mutex_get(&uart2_mutex, TX_NO_WAIT);
+
 	uint8_t txdata[16] = {0x00, N_ADDR_MSB, N_CMD_READ, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0xff, 0x01};
 	uint16_t rxlen = 0;
 	uint8_t rxdata[N_MAX_RX_BUFF] = {0};
@@ -108,6 +125,8 @@ void N_MasterReadFirstRelevantNodeData(uint8_t function, volatile uint32_t** dat
 			}
 		}
 	}
+
+	tx_mutex_put(&uart2_mutex);
 }
 
 /*
@@ -115,10 +134,13 @@ void N_MasterReadFirstRelevantNodeData(uint8_t function, volatile uint32_t** dat
  */
 void N_MasterRefreshAllNodeData(volatile uint8_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp)
 {
-	//kell egy mutex
-	uint8_t txdata[16] = {0x00, N_ADDR_MSB, N_CMD_READ, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0xff, 0x01};
+	tx_mutex_get(&uart2_mutex, TX_NO_WAIT);
+
+	uint8_t txdata[N_BUFF_SINGLE_SECTION_FULL_SIZE] = {0x00, N_ADDR_MSB, N_CMD_READ, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0xff, 0x01};
 	uint16_t rxlen= 0;
 	uint8_t rxdata[N_MAX_RX_BUFF] = {0};
+
+	HAL_StatusTypeDef ret = 0;
 
 	for(uint8_t nodeindx=0; nodeindx<N_NODE_AMOUNT; nodeindx++)
 	{
@@ -127,15 +149,23 @@ void N_MasterRefreshAllNodeData(volatile uint8_t*** capabilities_ppp, volatile u
 			txdata[0] = (nodeindx+1);
 			txdata[4] = (*capabilities_ppp)[nodeindx][cindx];
 			HAL_UART_Transmit(&huart2, txdata, 8, 100);
-			HAL_UARTEx_ReceiveToIdle(&huart2, rxdata, N_MAX_RX_BUFF, &rxlen, 200);
+			ret = HAL_UARTEx_ReceiveToIdle(&huart2, rxdata, N_MAX_RX_BUFF, &rxlen, 200);
+			if(ret != HAL_OK)
+			{
+				__NOP();//TODO debug
+			}
 			(*node_data_ppp)[nodeindx][cindx] = ((rxdata[6]<<0) | (rxdata[8]<<8) | (rxdata[10]<<16) | (rxdata[12]<<24));
 			memset(rxdata, 0, N_MAX_RX_BUFF);
 		}
 	}
+
+	tx_mutex_put(&uart2_mutex);
 }
 
 void N_MasterInitNodeNetwork(volatile uint8_t*** capabilitiesf_ppp, volatile uint32_t*** node_data_ppp)
 {
+	//no mutex, called before rtos init
+
 	uint8_t addr = 0;
 
 	uint8_t tx[16] = {0x00, N_ADDR_MSB, N_CMD_GET_CAPABILITIES, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00,N_DATA_MSB, 0xff, 0x01};

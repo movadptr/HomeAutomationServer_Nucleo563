@@ -119,7 +119,9 @@ typedef struct
                                         printf("SNTP client connected to NTP server : < %s > \n\r", SNTP_SERVER_NAME);\
                                      } while(0)
 
-#define INFO_STR_LEN	250U
+#define INFO_STR_LEN			250U
+#define HTTPS_TRIG_PRESC_CMP 	3U
+
 /* USER CODE END EM */
 
 /* Exported functions prototypes ---------------------------------------------*/

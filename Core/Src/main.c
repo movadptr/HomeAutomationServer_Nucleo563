@@ -70,20 +70,14 @@ SPI_HandleTypeDef hspi5;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-float PrevTemp_ROOM;
 
 volatile HAdata_S HAdata = {0};
-
-uint32_t HAalarms[HA_ALARM_LEN] = {0};
-uint8_t CurrentAlarm = 0;
-
-extern TX_SEMAPHORE HTTPSSemaphore;
 
 extern volatile uint8_t** node_capabilities_pp;
 extern volatile uint32_t** node_data_pp;
 
-volatile uint8_t https_trigger_presc = 0;
-#define HTTPS_TRIG_PRESC_CMP 2U
+extern TX_SEMAPHORE RTCALARMASemaphore;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -149,7 +143,7 @@ int main(void)
 
 
   CLEAR_BIT(RTC->CR, RTC_CR_ALRBE | RTC_CR_ALRBIE);//Disable the Alarm B interrupt, will enable it when RTC is updated from SNTP
-  init_alarms(HAalarms);
+
 
 	BspCOMInit.BaudRate   = 115200;
 	BspCOMInit.WordLength = COM_WORDLENGTH_8B;
@@ -749,15 +743,9 @@ static void MX_GPIO_Init(void)
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-/*
- * alarm in every minute
- */
 void HAL_RTCEx_AlarmBEventCallback(RTC_HandleTypeDef *hrtc)
 {
 	UNUSED(hrtc);
-
-
-
 }
 
 /*
@@ -765,81 +753,9 @@ void HAL_RTCEx_AlarmBEventCallback(RTC_HandleTypeDef *hrtc)
  */
 void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 {
-	RTC_DateTypeDef RTC_Date = {0};
-	RTC_TimeTypeDef RTC_Time = {0};
-	char TimS[TIMESTAMP_STR_BUFF_LEN] = {0};
-	time_t ts = 0;
-	//get time  date data from rtc
-	HAL_RTC_GetTime(hrtc,&RTC_Time,RTC_FORMAT_BCD);
-	HAL_RTC_GetDate(hrtc,&RTC_Date,RTC_FORMAT_BCD);
-	//convert to local time
-	ts = get_local_rtc_time_date(&RTC_Date, &RTC_Time, TimS);
+	UNUSED(hrtc);
 
-	https_trigger_presc++;
-	if(https_trigger_presc >= HTTPS_TRIG_PRESC_CMP)
-	{
-		https_trigger_presc = 0;
-		if(HAdata.time_update_after_boot_timestamp != NULL)//if this is a valid stuff then everything started correctly, and https can be started
-		{
-			tx_semaphore_put(&HTTPSSemaphore);//start IP check and refresh
-		}
-
-	}
-
-	{//check if any alarm matches current time, then execute it
-		//TODO make a more robust implementation, so if an sntp update comes and sets the time after the alarm, it won't be skipped
-		uint32_t current_ts = (RTC_Bcd2ToByte(RTC_Time.Hours)*60*60)+(RTC_Bcd2ToByte(RTC_Time.Minutes)*60)+RTC_Bcd2ToByte(RTC_Time.Seconds);
-		int8_t alarm_indx = (-1);//so at the first call it will become zero
-		while(1)
-		{
-			alarm_indx = check_alarm(current_ts, HAalarms, alarm_indx+1);
-			if(alarm_indx == (-1))//no more alarm
-			{
-				break;
-			}
-			else
-			{
-				switch(alarm_indx)
-				{
-					case HA_SHADER_ALARM_MIDDAY:	N_WriteEveryRelevantNode(N_EAST_SHADER, N_SHADER_OPEN_POS, &node_capabilities_pp, &node_data_pp);
-													break;
-					case HA_SHADER_ALARM_EVENING:	N_WriteEveryRelevantNode(N_EAST_SHADER, N_SHADER_CLOSED_POS, &node_capabilities_pp, &node_data_pp);
-													break;
-					default: break;
-				}
-			}
-		}
-	}
-
-
-	HAdata.temperature_server = convertLM71RawVal2Temp(LM71_read(SPI_TEMP_ROOM_CS_Pin, SPI_TEMP_ROOM_CS_GPIO_Port));
-
-	{
-#ifdef DEBUG
-		printf("%s\n\r", TimS);
-		printf("Server temperature= %f\n\r", HAdata.temperature_server);
-#endif
-
-		if( (ts < (HAdata.last_action_timestamp+10)))
-		{
-			if(HAdata.screen_state == 0)
-			{
-				HAdata.screen_state = 1;
-				oled_send_cmd(CMD_Set_Disp_ON);
-			}
-			update_screen(TimS);//update the small oled
-		}
-		else
-		{
-			if(HAdata.screen_state == 1)
-			{
-				HAdata.screen_state = 0;
-				oled_send_cmd(CMD_Set_Disp_Off);
-			}
-		}
-	}
-
-	HAL_GPIO_WritePin(YELLOW_LED_GPIO_Port, YELLOW_LED_Pin, GPIO_PIN_RESET);
+	tx_semaphore_put(&RTCALARMASemaphore);
 }
 
 void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin)

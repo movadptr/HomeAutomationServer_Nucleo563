@@ -44,7 +44,8 @@
 #define N_MAX_RX_BUFF	100U
 #define N_MAX_TX_BUFF	100U
 
-#define N_BUFF_SECTION_SIZE	0x12//how many bytes is a section in tx or rx buffer (cmd + dataid + data)
+#define N_BUFF_SECTION_SIZE	12U//how many bytes is a section in tx or rx buffer (cmd + function + data)
+#define N_BUFF_SINGLE_SECTION_FULL_SIZE	16U//how many bytes is a single section in tx or rx buffer (addr + cmd + function + data + termination)
 
 //commands
 #define N_CMD_READ				0x01
