@@ -26,7 +26,7 @@ TX_MUTEX uart2_mutex;
  */
 int8_t N_MasterWriteNodeData(uint8_t nodeaddr, uint8_t function, uint32_t data)
 {
-	tx_mutex_get(&uart2_mutex, TX_NO_WAIT);
+	tx_mutex_get(&uart2_mutex, TX_WAIT_FOREVER);
 
 	if((nodeaddr == 0) || (nodeaddr > N_NODE_AMOUNT))//bad addr
 	{
@@ -46,7 +46,7 @@ int8_t N_MasterWriteNodeData(uint8_t nodeaddr, uint8_t function, uint32_t data)
  */
 int8_t N_MasterReadNodeData(uint8_t nodeaddr, uint8_t function, volatile uint32_t* data)
 {
-	tx_mutex_get(&uart2_mutex, TX_NO_WAIT);
+	tx_mutex_get(&uart2_mutex, TX_WAIT_FOREVER);
 
 	if((nodeaddr == 0) || (nodeaddr > N_NODE_AMOUNT))//bad addr
 	{
@@ -71,7 +71,7 @@ int8_t N_MasterReadNodeData(uint8_t nodeaddr, uint8_t function, volatile uint32_
  */
 void N_WriteEveryRelevantNode(uint8_t function, uint32_t data, volatile uint8_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp)
 {
-	tx_mutex_get(&uart2_mutex, TX_NO_WAIT);
+	tx_mutex_get(&uart2_mutex, TX_WAIT_FOREVER);
 
 	uint8_t txdata[16] = {0x00, N_ADDR_MSB, N_CMD_WRITE, N_DATA_MSB, function, N_DATA_MSB, (uint8_t)((data>>0)&0xff), N_DATA_MSB, (uint8_t)((data>>8)&0xff), N_DATA_MSB, (uint8_t)((data>>16)&0xff), N_DATA_MSB, (uint8_t)((data>>24)&0xff), N_DATA_MSB, 0xff, 0x01};
 
@@ -96,7 +96,7 @@ void N_WriteEveryRelevantNode(uint8_t function, uint32_t data, volatile uint8_t*
  */
 void N_MasterReadFirstRelevantNodeData(uint8_t function, volatile uint32_t** data, volatile uint8_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp)
 {
-	tx_mutex_get(&uart2_mutex, TX_NO_WAIT);
+	tx_mutex_get(&uart2_mutex, TX_WAIT_FOREVER);
 
 	uint8_t txdata[16] = {0x00, N_ADDR_MSB, N_CMD_READ, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0xff, 0x01};
 	uint16_t rxlen = 0;
@@ -125,7 +125,6 @@ void N_MasterReadFirstRelevantNodeData(uint8_t function, volatile uint32_t** dat
 			}
 		}
 	}
-
 	tx_mutex_put(&uart2_mutex);
 }
 
@@ -134,7 +133,7 @@ void N_MasterReadFirstRelevantNodeData(uint8_t function, volatile uint32_t** dat
  */
 void N_MasterRefreshAllNodeData(volatile uint8_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp)
 {
-	tx_mutex_get(&uart2_mutex, TX_NO_WAIT);
+	tx_mutex_get(&uart2_mutex, TX_WAIT_FOREVER);
 
 	uint8_t txdata[N_BUFF_SINGLE_SECTION_FULL_SIZE] = {0x00, N_ADDR_MSB, N_CMD_READ, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0xff, 0x01};
 	uint16_t rxlen= 0;
