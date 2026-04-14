@@ -17,7 +17,7 @@
 #define I2C_READ	0x01
 #endif
 
-extern volatile uint8_t disp_mat[pixels_x][pixels_y/8];
+extern volatile uint8_t disp_mat[pixels_y/8][pixels_x];
 
 
 #ifdef SSD1306_STM32_HAL
@@ -36,7 +36,7 @@ void print_disp_mat(void)
 		go_to_col_page(0, y);
 		for(x=0; x<pixels_x; x++)
 		{
-			row[x+1]=disp_mat[x][y];
+			row[x+1]=disp_mat[y][x];
 		}
 		HAL_I2C_Master_Transmit(&hi2c2, (uint16_t)Disp_Addr, row, pixels_x+1, 1000);
 	}
@@ -200,7 +200,7 @@ void print_disp_mat(void)
 		}
 		for(i=0; i<pixels_x; i++)
 		{
-			LL_I2C_TransmitData8(I2C1, disp_mat[i][k]);
+			LL_I2C_TransmitData8(I2C1, disp_mat[k][i]);
 			while(LL_I2C_IsActiveFlag_TXE(I2C1) == 0)
 			{
 				asm("nop");
@@ -303,7 +303,7 @@ void print_disp_mat(void)
 			while(! LL_I2C_IsActiveFlag_BTF(I2C1))	{ __NOP();}
 			while(! LL_I2C_IsActiveFlag_TXE(I2C1))	{ __NOP();}
 
-			LL_I2C_TransmitData8(I2C1, disp_mat[l][k]);
+			LL_I2C_TransmitData8(I2C1, disp_mat[k][l]);
 		}
 
 		while(! LL_I2C_IsActiveFlag_BTF(I2C1))	{ __NOP();}

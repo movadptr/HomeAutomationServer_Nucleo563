@@ -64,9 +64,9 @@ TX_THREAD AppRTCAlarmAThread;
 
 // Define NetX global data structures
 NX_UDP_SOCKET UDPSocket;
-ULONG IpAddress;
 ULONG NetMask;
-ULONG PublicIpAddress;
+static ULONG IpAddress;
+static ULONG PublicIpAddress;
 extern HAdata_S HAdata;
 
 NX_DNS                  DnsClient;
@@ -74,11 +74,10 @@ NX_DNS                  DnsClient;
 NX_SNTP_CLIENT			SntpClient;
 TX_EVENT_FLAGS_GROUP	SntpFlags;
 CHAR					buffer[64];
-struct 					tm timeInfos;
 RTC_HandleTypeDef 		RtcHandle;
 UINT  					iface_index = 0;//set the SNTP network interface to the primary interface.
 
-extern volatile uint8_t** node_capabilities_pp;
+extern volatile uint16_t** node_capabilities_pp;
 extern volatile uint32_t** node_data_pp;
 
 uint8_t time_update_after_boot_flag = 0;
@@ -388,7 +387,20 @@ static VOID ip_address_change_notify_callback(NX_IP *ip_instance, VOID *ptr)
   /* USER CODE BEGIN ip_address_change_notify_callback */
 	UNUSED(ip_instance);
 	UNUSED(ptr);
-	tx_semaphore_put(&DHCPSemaphore);
+
+	UINT ret = NX_SUCCESS;
+
+	ret = nx_ip_address_get(&NetXDuoEthIpInstance, &IpAddress, &NetMask);
+	PRINT_IP_ADDRESS(IpAddress);
+	if (ret != TX_SUCCESS)
+	{
+		Error_Handler();
+	}
+
+	if(time_update_after_boot_flag == 0)//use only at boot
+	{
+		tx_semaphore_put(&DHCPSemaphore);
+	}
   /* USER CODE END ip_address_change_notify_callback */
 }
 
@@ -423,7 +435,7 @@ static VOID App_Main_Thread_Entry (ULONG thread_input)
   if (ret != NX_SUCCESS)
   {
     /* USER CODE BEGIN DHCP client start error */
-
+	  Error_Handler();
     /* USER CODE END DHCP client start error */
   }
 
@@ -436,16 +448,6 @@ static VOID App_Main_Thread_Entry (ULONG thread_input)
   }
 
   /* USER CODE BEGIN Nx_App_Thread_Entry 2 */
-  //get IP address
-    ret = nx_ip_address_get(&NetXDuoEthIpInstance, &IpAddress, &NetMask);
-
-    //print the IP address
-    PRINT_IP_ADDRESS(IpAddress);
-
-    if (ret != TX_SUCCESS)
-    {
-      Error_Handler();
-    }
 
     //Now the network is correctly initialized, start the UDP server thread
     tx_thread_resume(&AppUDPThread);
@@ -459,8 +461,8 @@ static VOID App_Main_Thread_Entry (ULONG thread_input)
 	//start alarm A thread
 	tx_thread_resume(&AppRTCAlarmAThread);
 
-    //this thread is not needed any more, we relinquish it
-    tx_thread_relinquish();
+    //this thread is not needed any more, terminate permanently
+	tx_thread_terminate(tx_thread_identify());
   /* USER CODE END Nx_App_Thread_Entry 2 */
 
 }
@@ -571,10 +573,6 @@ static void App_SNTP_Thread_Entry(ULONG info)
   //Set Current time from SNTP TO RTC
   rtc_time_update(&SntpClient.nx_sntp_current_server_time_message, NULL);
 
-
-  // Enable the Alarm B interrupt
-  //SET_BIT(RTC->CR, RTC_CR_ALRBE | RTC_CR_ALRBIE);
-
   /*
   // We can stop the SNTP service if for example we think the SNTP server has stopped sending updates
   ret = nx_sntp_client_stop(&SntpClient);
@@ -590,10 +588,11 @@ static void App_SNTP_Thread_Entry(ULONG info)
     Error_Handler();
   }
   */
-  // time is printed in RTC interrupt
 
-  // this thread is not needed any more, we relinquish it
-  tx_thread_relinquish();
+  // time is printed in alarm thread
+
+  // this thread is not needed any more, terminate permanently
+  tx_thread_terminate(tx_thread_identify());
 
 }
 
@@ -647,7 +646,7 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
 
 	if(time_update_after_boot_flag == 1)
 	{
-		time_update_after_boot_flag = 0;
+		time_update_after_boot_flag = 2;
 		if(HAdata.time_update_after_boot_timestamp != NULL)//can't happen because after boot it should be empty but bab
 		{
 			free(HAdata.time_update_after_boot_timestamp);
@@ -677,7 +676,7 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
 			N_MasterGetFirstRelevantNodeData(N_ROOM_TEMPERATURE_SENSOR, &cnv.u, &node_capabilities_pp, &node_data_pp);
 			TempRoom1 = cnv.f;
 
-			N_GetNodeData((uint32_t*)node_data_pp[2-1], &cnv.u, N_ROOM_TEMPERATURE_SENSOR, (uint8_t*)node_capabilities_pp[2-1]);
+			N_GetNodeData(node_data_pp[2-1], &cnv.u, N_ROOM_TEMPERATURE_SENSOR, node_capabilities_pp[2-1]);
 			TempRoom2 = cnv.f;
 
 			snprintf(txstr, INFO_STR_LEN, "INFO_Server datetime:\t%s\nBoot datetime:\t\t\t%s\nIP update:\t\t\t\t\t\t%s\nServer temp:\t\t%.2f°C\nRoom temp1:\t\t%.2f°C\nRoom temp2:\t\t%.2f°C\nOut temp:\t\t\t\t\t%.2f°C",
@@ -689,37 +688,52 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
 					 TempRoom2,
 					 TempOut);
 
+			txstr[INFO_STR_LEN-1] = 0;//make sure zero terminated
 			ret = createAndSendUDPPacket(source_ip_address, source_port, txstr);
+			if (ret != NX_SUCCESS)	{ Error_Handler();}
 		}
 
 		if(strcmp((char*)data_buffer, HA_SECR_STR2) == 0)
 		{
 			N_WriteEveryRelevantNode(N_INDICATOR_LED, 1U, &node_capabilities_pp, &node_data_pp);
-
 		}
 		else if(strcmp((char*)data_buffer, HA_SECR_STR3) == 0)
 		{
 			N_WriteEveryRelevantNode(N_INDICATOR_LED, 0U, &node_capabilities_pp, &node_data_pp);
 		}
 
+
+		if(strcmp((char*)data_buffer, HA_SECR_STR15) == 0)
+		{
+			N_WriteEveryRelevantNode(N_LIVING_ROOM_SMALL_LIGHT, 1U, &node_capabilities_pp, &node_data_pp);
+		}
+		else if(strcmp((char*)data_buffer, HA_SECR_STR16) == 0)
+		{
+			N_WriteEveryRelevantNode(N_LIVING_ROOM_SMALL_LIGHT, 0U, &node_capabilities_pp, &node_data_pp);
+		}
+
+
 		if(strncmp((char*)data_buffer, HA_SECR_STR4, HA_SECR_STR4_LEN) == 0)
 		{
 			union{uint32_t u; int32_t i;}cnv;
 
 			cnv.i = atoi((const char*)data_buffer+HA_SECR_STR4_LEN);//convert pos from string to num
-			N_WriteEveryRelevantNode(N_EAST_SHADER, cnv.u, &node_capabilities_pp, &node_data_pp);
+			if((cnv.i<=100)&&(cnv.i>=(-100)))
+			{
+				N_WriteEveryRelevantNode(N_EAST_SHADER, cnv.u, &node_capabilities_pp, &node_data_pp);
+			}
 		}
 		if(strcmp((char*)data_buffer, HA_SECR_STR9) == 0)
 		{
 			union{uint32_t u; int i;}cnv;
-			char txstr[20] = {0};
-			char tmpvals[10] = {0};
+			char txstr[40] = {0};
+			char tmpvals[20] = {0};
 
 			N_MasterGetFirstRelevantNodeData(N_EAST_SHADER, &cnv.u, &node_capabilities_pp, &node_data_pp);
-			snprintf(tmpvals, 10, "%i", cnv.i);
+			snprintf(tmpvals, 20, "%i", cnv.i);
 			memcpy(txstr, HA_SECR_STR9, HA_SECR_STR9_LEN);
-			memcpy(txstr+HA_SECR_STR9_LEN, tmpvals, 10);
-			txstr[20-1] = 0;//bab
+			memcpy(txstr+HA_SECR_STR9_LEN, tmpvals, 20);
+			txstr[40-1] = 0;//bab
 
 			(void)createAndSendUDPPacket(source_ip_address, source_port, txstr);
 		}
@@ -770,7 +784,7 @@ static VOID App_Link_Thread_Entry(ULONG thread_input)
         if(status == NX_SUCCESS)
         {
           printf("The network cable is connected again.\n\r");
-          printf("UDP Echo Server is available again.\n\r");
+          printf("UDP Server is available again.\n\r");
         }
         else
         {
@@ -1257,7 +1271,7 @@ UINT Http_request(HTTP_RSC_STRUCT* resources)
 
 	//Create an HTTP client instance.
 	status = _nxe_web_http_client_create(&http_client, "HTTP Client", &NetXDuoEthIpInstance, &NxAppPool, 1536, sizeof(http_client));
-	if(status != NX_SUCCESS) { return status;}
+	if(status != NX_SUCCESS) { (void)_nxe_web_http_client_delete(&http_client); return status;}
 #ifdef DEBUG
 	//Set the header callback routine.
 	//_nxe_web_http_client_response_header_callback_set(&http_client, http_response_callback);

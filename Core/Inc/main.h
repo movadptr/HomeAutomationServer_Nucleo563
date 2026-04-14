@@ -32,6 +32,18 @@ extern "C" {
 #include "stm32h5xx_nucleo.h"
 #include <stdio.h>
 
+#include "stm32h5xx_ll_usart.h"
+#include "stm32h5xx_ll_rcc.h"
+#include "stm32h5xx_ll_bus.h"
+#include "stm32h5xx_ll_cortex.h"
+#include "stm32h5xx_ll_system.h"
+#include "stm32h5xx_ll_utils.h"
+#include "stm32h5xx_ll_pwr.h"
+#include "stm32h5xx_ll_gpio.h"
+#include "stm32h5xx_ll_dma.h"
+
+#include "stm32h5xx_ll_exti.h"
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "ha_secr.h"
@@ -89,6 +101,7 @@ void timestamp2RTCDateTime(time_t timestamp, RTC_DateTypeDef *RD, RTC_TimeTypeDe
 time_t RTCDateTime2timestamp_(uint8_t year, uint8_t month, uint8_t day, uint8_t hour, uint8_t min, uint8_t sec);
 time_t RTCDateTime2timestamp(RTC_DateTypeDef *RD, RTC_TimeTypeDef *RT);
 time_t get_local_rtc_time_date(RTC_DateTypeDef* RTC_Date_p,  RTC_TimeTypeDef* RTC_Time_p, char* tmps);
+int8_t last_sunday(uint8_t year, uint8_t month, time_t* timestamp);
 void SetSmoothCalib(int16_t calv);
 char* StrAllocAndCpy(char* str);
 void init_alarms(uint32_t* HAalarms_F);
@@ -156,9 +169,8 @@ int8_t check_alarm(uint32_t current_time, uint32_t* HAalarms_F, int8_t start_ind
 #define SWCLK_GPIO_Port GPIOA
 #define T_JTDI_Pin GPIO_PIN_15
 #define T_JTDI_GPIO_Port GPIOA
-#define FRNTDRSW_Pin GPIO_PIN_3
-#define FRNTDRSW_GPIO_Port GPIOD
-#define FRNTDRSW_EXTI_IRQn EXTI3_IRQn
+#define RS485_DIR_Pin GPIO_PIN_4
+#define RS485_DIR_GPIO_Port GPIOD
 #define RMII_TXT_EN_Pin GPIO_PIN_11
 #define RMII_TXT_EN_GPIO_Port GPIOG
 #define RMI_TXD0_Pin GPIO_PIN_13

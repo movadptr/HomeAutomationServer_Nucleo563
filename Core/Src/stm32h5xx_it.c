@@ -41,6 +41,11 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
+volatile uint16_t uart_rx_buff[N_MAX_RX_BUFF] = {0};
+volatile uint16_t uart_rx_buff_indx = 0;
+volatile uint8_t uart_state = UART_READY;
+volatile uint8_t uart_timeout_s = UART_TIMEOUT_OFF;
+volatile uint8_t rx_dlc = 0;//data length code
 
 /* USER CODE END PV */
 
@@ -191,24 +196,6 @@ void FLASH_IRQHandler(void)
 }
 
 /**
-  * @brief This function handles EXTI Line3 interrupt.
-  */
-void EXTI3_IRQHandler(void)
-{
-  /* USER CODE BEGIN EXTI3_IRQn 0 */
-
-  /* USER CODE END EXTI3_IRQn 0 */
-  HAL_GPIO_EXTI_IRQHandler(FRNTDRSW_Pin);
-  /* USER CODE BEGIN EXTI3_IRQn 1 */
-	__HAL_GPIO_EXTI_CLEAR_RISING_IT(GPIO_PIN_3);
-	__HAL_GPIO_EXTI_CLEAR_FALLING_IT(GPIO_PIN_3);
-
-
-
-  /* USER CODE END EXTI3_IRQn 1 */
-}
-
-/**
   * @brief This function handles EXTI Line13 interrupt.
   */
 void EXTI13_IRQHandler(void)
@@ -234,6 +221,57 @@ void TIM6_IRQHandler(void)
   /* USER CODE BEGIN TIM6_IRQn 1 */
 
   /* USER CODE END TIM6_IRQn 1 */
+}
+
+/**
+  * @brief This function handles USART2 global interrupt.
+  */
+void USART2_IRQHandler(void)
+{
+  /* USER CODE BEGIN USART2_IRQn 0 */
+	//start reception and during reception
+	if(LL_USART_IsActiveFlag_RXNE_RXFNE(USART2))
+	{
+		volatile uint16_t rxc = LL_USART_ReceiveData9(USART2);//also clears rxne
+
+		if( (rxc==N_MASTER_ADDR) && (uart_state==UART_READY))
+		{
+			uart_state = UART_RX_STARTED;
+			uart_rx_buff_indx = 0;
+			rx_dlc = 2;//temporary length, till the real DLC is received
+			uart_timeout_s = 0; //start timeout counter
+		}else{}
+
+		if(uart_state == UART_RX_STARTED)
+		{
+			if(uart_rx_buff_indx<rx_dlc)
+			{
+				if(uart_rx_buff_indx == N_DLC_POS)
+				{
+					rx_dlc = rxc;
+				}
+				uart_rx_buff[uart_rx_buff_indx] = rxc;
+				uart_rx_buff_indx++;
+			}
+			else//receive should have been terminated
+			{
+
+			}
+
+		}else{}
+
+		//end reception, full length received, or idle frame detected
+		if(((uart_rx_buff_indx>=rx_dlc) || (rxc == 0x1ff)) && (uart_state == UART_RX_STARTED))
+		{
+			//TODO add timeot timer interrupt
+			uart_timeout_s = UART_TIMEOUT_OFF; //stop timeout counter
+			uart_state = UART_WAIT_FOR_PROCESS; //show that rx processing can be started
+		}
+	}
+  /* USER CODE END USART2_IRQn 0 */
+  /* USER CODE BEGIN USART2_IRQn 1 */
+
+  /* USER CODE END USART2_IRQn 1 */
 }
 
 /**

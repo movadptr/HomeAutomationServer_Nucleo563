@@ -13,13 +13,36 @@
 
 ///variables//////////////////////////////////////////////////
 
-extern UART_HandleTypeDef huart2;
-volatile uint8_t** node_capabilities_pp = NULL;
+volatile uint16_t** node_capabilities_pp = NULL;
 volatile uint32_t** node_data_pp = NULL;
+
+extern volatile uint8_t uart_state;
+extern volatile uint16_t uart_rx_buff[N_MAX_RX_BUFF];
+extern volatile uint16_t uart_rx_buff_indx;
 
 TX_MUTEX uart2_mutex;
 
 ///functions//////////////////////////////////////////////////
+
+/*
+ * shitty blocking delay
+ * only valid at 550MHz clock
+ * input: how many times 100us
+ * TODO build a not shitty one
+ */
+void delay100us_b(uint32_t us100)
+{
+	uint32_t cnt = 0;
+	while(us100)
+	{
+		cnt = 0;
+		while(cnt<55000)//100us
+		{
+			cnt++;
+		}
+		us100--;
+	}
+}
 
 /*
  * desc: writes to the node in the given address
@@ -33,16 +56,17 @@ int8_t N_MasterWriteNodeData(uint8_t nodeaddr, uint8_t function, uint32_t data)
 		return -1;
 	}
 
-	uint8_t txdata[16] = {nodeaddr, N_ADDR_MSB, N_CMD_WRITE, N_DATA_MSB, function, N_DATA_MSB, (uint8_t)((data>>0)&0xff), N_DATA_MSB, (uint8_t)((data>>8)&0xff), N_DATA_MSB, (uint8_t)((data>>16)&0xff), N_DATA_MSB, (uint8_t)((data>>24)&0xff), N_DATA_MSB, 0xff, 0x01};
-	HAL_UART_Transmit(&huart2, txdata, 8, 100);
+	uint16_t txdata[10] = {N_ADDR|nodeaddr, 10, N_CMD_WRITE_NACK, function, (uint16_t)((data>>0)&0xff), (uint16_t)((data>>8)&0xff), (uint16_t)((data>>16)&0xff), (uint16_t)((data>>24)&0xff), 0x0000, N_IDLE_CHAR};
+	N_UART_Transmit(txdata, 10);
 
+	//todo receive with ack cmd
 	tx_mutex_put(&uart2_mutex);
 
 	return 0;
 }
 
 /*
- * desc: Reads from the firs node in the given address
+ * desc: Reads from the first node in the given address
  */
 int8_t N_MasterReadNodeData(uint8_t nodeaddr, uint8_t function, volatile uint32_t* data)
 {
@@ -53,13 +77,18 @@ int8_t N_MasterReadNodeData(uint8_t nodeaddr, uint8_t function, volatile uint32_
 		return -1;
 	}
 
-	uint8_t txdata[16] = {nodeaddr, N_ADDR_MSB, N_CMD_READ, N_DATA_MSB, function, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0xff, 0x01};
-	uint16_t rxlen = 0;
-	uint8_t rxdata[N_MAX_RX_BUFF] = {0};
+	uint16_t txdata[6] = {N_ADDR|nodeaddr, 6, N_CMD_READ, function, 0x0000, N_IDLE_CHAR};
+	uint8_t rxlen = 0;
 
-	HAL_UART_Transmit(&huart2, txdata, 8, 100);
-	HAL_UARTEx_ReceiveToIdle(&huart2, rxdata, N_MAX_RX_BUFF, &rxlen, 200);
-	*data = ((rxdata[6]<<0) | (rxdata[8]<<8) | (rxdata[10]<<16) | (rxdata[12]<<24));//save received data
+	N_UART_Transmit(txdata, 6);
+	if(N_UART_receive(&rxlen)==0)
+	{
+		if(data != NULL)
+		{
+			*data = ((uart_rx_buff[4]<<0) | (uart_rx_buff[5]<<8) | (uart_rx_buff[6]<<16) | (uart_rx_buff[7]<<24));//save received data
+		}
+	}
+
 
 	tx_mutex_put(&uart2_mutex);
 
@@ -69,20 +98,21 @@ int8_t N_MasterReadNodeData(uint8_t nodeaddr, uint8_t function, volatile uint32_
 /*
  * desc: Writes to the first node in the node list which has the given function
  */
-void N_WriteEveryRelevantNode(uint8_t function, uint32_t data, volatile uint8_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp)
+void N_WriteEveryRelevantNode(uint8_t function, uint32_t data, volatile uint16_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp)
 {
 	tx_mutex_get(&uart2_mutex, TX_WAIT_FOREVER);
 
-	uint8_t txdata[16] = {0x00, N_ADDR_MSB, N_CMD_WRITE, N_DATA_MSB, function, N_DATA_MSB, (uint8_t)((data>>0)&0xff), N_DATA_MSB, (uint8_t)((data>>8)&0xff), N_DATA_MSB, (uint8_t)((data>>16)&0xff), N_DATA_MSB, (uint8_t)((data>>24)&0xff), N_DATA_MSB, 0xff, 0x01};
-
+	uint16_t txdata[10] = {N_ADDR, 10, N_CMD_WRITE_NACK, function, (uint16_t)((data>>0)&0xff), (uint16_t)((data>>8)&0xff), (uint16_t)((data>>16)&0xff), (uint16_t)((data>>24)&0xff), 0x0000, N_IDLE_CHAR};
 	for(uint8_t nodeindx=0; nodeindx<N_NODE_AMOUNT; nodeindx++)
 	{
 		for(uint8_t cindx=0; (*capabilities_ppp)[nodeindx][cindx]!=0; cindx++)
 		{
 			if((*capabilities_ppp)[nodeindx][cindx] == function)
 			{
-				txdata[0] = (nodeindx+1);
-				HAL_UART_Transmit(&huart2, txdata, 8, 100);
+				txdata[0] = (N_ADDR|(nodeindx+1));
+				delay100us_b(5);
+				N_UART_Transmit(txdata, 10);
+				//todo receive with ack cmd
 				(*node_data_ppp)[nodeindx][cindx] = data;//also store it locally
 			}else{}
 		}
@@ -94,13 +124,12 @@ void N_WriteEveryRelevantNode(uint8_t function, uint32_t data, volatile uint8_t*
 /*
  * desc: Reads from the first node in the node list which has the given function
  */
-void N_MasterReadFirstRelevantNodeData(uint8_t function, volatile uint32_t** data, volatile uint8_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp)
+void N_MasterReadFirstRelevantNodeData(uint8_t function, volatile uint32_t** data, volatile uint16_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp)
 {
 	tx_mutex_get(&uart2_mutex, TX_WAIT_FOREVER);
 
-	uint8_t txdata[16] = {0x00, N_ADDR_MSB, N_CMD_READ, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0xff, 0x01};
-	uint16_t rxlen = 0;
-	uint8_t rxdata[N_MAX_RX_BUFF] = {0};
+	uint16_t txdata[6] = {N_ADDR, 6, N_CMD_READ, function, 0x0000, N_IDLE_CHAR};
+	uint8_t rxlen = 0;
 
 	for(uint8_t nodeindx=0; nodeindx<N_NODE_AMOUNT; nodeindx++)
 	{
@@ -108,18 +137,20 @@ void N_MasterReadFirstRelevantNodeData(uint8_t function, volatile uint32_t** dat
 		{
 			if((*capabilities_ppp)[nodeindx][cindx] == function)
 			{
-				txdata[0] = (nodeindx+1);
-				txdata[4] = function;
-				HAL_UART_Transmit(&huart2, txdata, 8, 100);
-				HAL_UARTEx_ReceiveToIdle(&huart2, rxdata, N_MAX_RX_BUFF, &rxlen, 200);
-				(*node_data_ppp)[nodeindx][cindx] = ((rxdata[6]<<0) | (rxdata[8]<<8) | (rxdata[10]<<16) | (rxdata[12]<<24));//save received data
-				if(data!=NULL)
+				txdata[0] = (N_ADDR|(nodeindx+1));
+				delay100us_b(5);
+				N_UART_Transmit(txdata, 6);
+				if(N_UART_receive(&rxlen)==0)
 				{
-					*data = &((*node_data_ppp)[nodeindx][cindx]);//copy received data location to use immediately
-				}
-				else
-				{
-					*data = NULL;
+					(*node_data_ppp)[nodeindx][cindx] = ((uart_rx_buff[4]<<0) | (uart_rx_buff[5]<<8) | (uart_rx_buff[6]<<16) | (uart_rx_buff[7]<<24));//save received data
+					if(data!=NULL)
+					{
+						*data = &((*node_data_ppp)[nodeindx][cindx]);//copy received data location to use immediately
+					}
+					else
+					{
+						*data = NULL;
+					}
 				}
 				return;
 			}
@@ -131,48 +162,53 @@ void N_MasterReadFirstRelevantNodeData(uint8_t function, volatile uint32_t** dat
 /*
  * desc: read all data from every node
  */
-void N_MasterRefreshAllNodeData(volatile uint8_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp)
+void N_MasterRefreshAllNodeData(volatile uint16_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp)
 {
 	tx_mutex_get(&uart2_mutex, TX_WAIT_FOREVER);
 
-	uint8_t txdata[N_BUFF_SINGLE_SECTION_FULL_SIZE] = {0x00, N_ADDR_MSB, N_CMD_READ, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0xff, 0x01};
-	uint16_t rxlen= 0;
-	uint8_t rxdata[N_MAX_RX_BUFF] = {0};
-
-	HAL_StatusTypeDef ret = 0;
+	uint16_t txdata[6] = {N_ADDR, 6, N_CMD_READ, 0x0000, 0x0000, N_IDLE_CHAR};
+	uint8_t rxlen = 0;
 
 	for(uint8_t nodeindx=0; nodeindx<N_NODE_AMOUNT; nodeindx++)
 	{
 		for(uint8_t cindx=0; (*capabilities_ppp)[nodeindx][cindx]!=0; cindx++)
 		{
-			txdata[0] = (nodeindx+1);
-			txdata[4] = (*capabilities_ppp)[nodeindx][cindx];
-			HAL_UART_Transmit(&huart2, txdata, 8, 100);
-			ret = HAL_UARTEx_ReceiveToIdle(&huart2, rxdata, N_MAX_RX_BUFF, &rxlen, 200);
-			if(ret != HAL_OK)
+			txdata[0] = (N_ADDR|(nodeindx+1));
+			txdata[3] = (*capabilities_ppp)[nodeindx][cindx];
+			N_UART_Transmit(txdata, 6);
+			if(N_UART_receive(&rxlen)==0)
 			{
-				__NOP();//TODO debug
+				(*node_data_ppp)[nodeindx][cindx] = ((uart_rx_buff[4]<<0) | (uart_rx_buff[5]<<8) | (uart_rx_buff[6]<<16) | (uart_rx_buff[7]<<24));
 			}
-			(*node_data_ppp)[nodeindx][cindx] = ((rxdata[6]<<0) | (rxdata[8]<<8) | (rxdata[10]<<16) | (rxdata[12]<<24));
-			memset(rxdata, 0, N_MAX_RX_BUFF);
+#ifdef DEBUG
+			printf("a_%i__c_", txdata[0]);
+			uint8_t asd = 0;
+			while(asd<rxlen)
+			{
+				printf("%i_",uart_rx_buff[asd]);
+				asd++;
+			}
+			printf(".\n\n\r");
+#else
+			LL_mDelay(3);//TODO debug, why is it working with this?????
+#endif
 		}
 	}
 
 	tx_mutex_put(&uart2_mutex);
 }
 
-void N_MasterInitNodeNetwork(volatile uint8_t*** capabilitiesf_ppp, volatile uint32_t*** node_data_ppp)
+void N_MasterInitNodeNetwork(volatile uint16_t*** capabilitiesf_ppp, volatile uint32_t*** node_data_ppp)
 {
 	//no mutex, called before rtos init
 
-	uint8_t addr = 0;
+	uint16_t addr = 0;
 
-	uint8_t tx[16] = {0x00, N_ADDR_MSB, N_CMD_GET_CAPABILITIES, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00, N_DATA_MSB, 0x00,N_DATA_MSB, 0xff, 0x01};
+	uint16_t tx[5] = {N_ADDR, 5, N_CMD_GET_CAPABILITIES, 0x0000/*dummy tmp CRC val*/, N_IDLE_CHAR};
 	uint8_t rxlen = 0;
-	uint8_t rx[N_MAX_RX_BUFF] = {0};
 
 	//allocate mem for capabilities
-	*capabilitiesf_ppp = (volatile uint8_t**)calloc(N_NODE_AMOUNT, sizeof(volatile uint8_t*));
+	*capabilitiesf_ppp = (volatile uint16_t**)calloc(N_NODE_AMOUNT, sizeof(volatile uint16_t*));
 	if(*capabilitiesf_ppp == NULL)	{ Error_Handler();}
 	//allocate mem for data
 	*node_data_ppp = (volatile uint32_t**)calloc(N_NODE_AMOUNT, sizeof(volatile uint32_t*));
@@ -181,65 +217,116 @@ void N_MasterInitNodeNetwork(volatile uint8_t*** capabilitiesf_ppp, volatile uin
 
 	while(addr < N_NODE_AMOUNT)
 	{
-		tx[0] = addr+1;
-		HAL_UART_Transmit(&huart2, tx, 8, 100);
-		HAL_UARTEx_ReceiveToIdle(&huart2, rx, N_MAX_RX_BUFF, (uint16_t*)&rxlen, 200);
-		N_MasterStoreCapabilities(rx, rxlen*2, capabilitiesf_ppp, addr, node_data_ppp);
+		tx[0] = (N_ADDR|(addr+1));
+		delay100us_b(5);
+		N_UART_Transmit(tx, 5);
+		if(N_UART_receive(&rxlen)==0)
+		{
+			N_MasterStoreCapabilities(uart_rx_buff, rxlen, capabilitiesf_ppp, addr, node_data_ppp);
+		}
 		addr++;
-		memset(rx, 0, N_MAX_RX_BUFF);
 	}
 }
 
-void N_MasterStoreCapabilities(uint8_t* rxbuff, uint8_t rxlen, volatile uint8_t*** capabilitiesf_ppp, uint8_t addr, volatile uint32_t*** node_data_ppp)
+int8_t N_UART_receive(uint8_t* len)
 {
-	uint8_t clen = ((rxlen-4)/2);//(((rxlen-6)/2)+1);//-2 master addr, -2 cmd, -2 terminating idle word, /2 because every word is 2 byte, +1 termination zero in capabilities
+	uint32_t cnt = 0;
+	LL_GPIO_ResetOutputPin(RS485_DIR_GPIO_Port, RS485_DIR_Pin);//set RS485 transceiver to rx mode //bab
 
-	//allocate mem for this node capabilities
-	(*capabilitiesf_ppp)[addr] = (uint8_t*)calloc(clen, sizeof(uint8_t));//calloc ensures termination zero is there
-	if((*capabilitiesf_ppp)[addr] == NULL)	{ Error_Handler();}
-	//allocate mem for this node data
-	(*node_data_ppp)[addr] = (uint32_t*)calloc(clen-1, sizeof(uint32_t));//clen-1 -> don't need the terminating zero
-	if((*node_data_ppp)[addr] == NULL)	{ Error_Handler();}
-
-	uint8_t rxindx = 4;
-
-	for(clen=0; rxindx<(rxlen-2); rxindx+=2, clen++)
+	while((uart_state != UART_WAIT_FOR_PROCESS) && (cnt<10000000))
 	{
-		(*capabilitiesf_ppp)[addr][clen] = rxbuff[rxindx];
+		__NOP();
+		//TODO timeout
+		//ha a timeout lejárt return -1
+		cnt++;
 	}
-}
 
-
-/*
- * txbuff - tranmit buffer to work on (designed to work with 9 bit uart, so the stride is 2byte)
- * offset - at which index to start putting data in, after function finished it points to the next free address
- * data - normal data string containing data to append
- * datalen - length of data to append
- */
-int N_AppendTxBuff(uint8_t* txbuff, uint8_t* offset, uint8_t* data, uint8_t datalen)
-{
-	uint8_t i = 0;
-
-	while(i<datalen)
+	if(cnt >= 10000000)
 	{
-		if(*offset < N_MAX_TX_BUFF)
-		{
-			txbuff[*offset] = data[i];
-			i++;
-			*offset+=2;
-		}
-		else
-		{
-			return -1;
-		}
+		uart_rx_buff[1] = 10;
+		uart_rx_buff[2] = N_CMD_READ;
+		uart_rx_buff[3] = N_FUNCTION_NONE;
+		uart_rx_buff[4] = 0;
+		uart_rx_buff[5] = 0;
+		uart_rx_buff[6] = 0;
+		uart_rx_buff[7] = 0;
+		uart_rx_buff[8] = 0;
+		uart_rx_buff[9] = 0x1ff;
+		uart_rx_buff_indx=10;
+		HAL_GPIO_TogglePin(RED_LED_GPIO_Port, RED_LED_Pin);
 	}
+
+
+	if(len != NULL)
+	{
+		(*len) = uart_rx_buff_indx;
+	}
+
 	return 0;
 }
 
 /*
+ * txbuff -
+ * len - length of buffer (num of uint16_t elements)
+ */
+void N_UART_Transmit(uint16_t* txbuff, uint8_t len)
+{
+	uint8_t indx = 0;
+
+	uart_state = UART_TRANSMITTING;
+	LL_GPIO_SetOutputPin(RS485_DIR_GPIO_Port, RS485_DIR_Pin);//set RS485 transceiver to tx mode
+	while(indx<len)
+	{
+		LL_USART_TransmitData9(USART2, txbuff[indx]);
+		indx ++;
+		while(LL_USART_IsActiveFlag_TC(USART2) == 0)
+		{
+			__NOP();
+		}
+	}
+	LL_GPIO_ResetOutputPin(RS485_DIR_GPIO_Port, RS485_DIR_Pin);//set RS485 transceiver to rx mode
+
+	uart_state = UART_READY;
+}
+
+void N_MasterStoreCapabilities(volatile uint16_t* rxbuff, uint8_t rxlen, volatile uint16_t*** capabilitiesf_ppp, uint8_t addr, volatile uint32_t*** node_data_ppp)
+{
+	//ADDR DLC CMD DATA1 DATA2 ... DATAN CRC IDLE
+	//0    1   2   3     4     ...
+	uint8_t clen = 0;
+
+	if(rxlen > 5)
+	{
+		clen = (rxlen-5);//ADDR+DLC+CMD+CRC+IDLE
+	}
+	else
+	{
+		Error_Handler();
+	}
+
+	//allocate mem for this node capabilities
+	(*capabilitiesf_ppp)[addr] = (uint16_t*)calloc(clen+1, sizeof(uint16_t));//+1 to have a fix zero byte at the end //calloc ensures termination zero is there
+	if((*capabilitiesf_ppp)[addr] == NULL)	{ Error_Handler();}
+	//allocate mem for this node data
+	(*node_data_ppp)[addr] = (uint32_t*)calloc(clen, sizeof(uint32_t));
+	if((*node_data_ppp)[addr] == NULL)	{ Error_Handler();}
+
+	//copy capabilities to allocated mem
+	uint8_t rxindx = 3;
+	uint8_t capindx = 0;
+	while(capindx <= clen)// "<=" to incorporate terminating 0
+	{
+		(*capabilitiesf_ppp)[addr][capindx] = rxbuff[rxindx];
+		capindx++;
+		rxindx++;
+	}
+}
+
+
+/*
  * desc: Gets the first node data in the local variable structure which has the given function
  */
-void N_MasterGetFirstRelevantNodeData(uint8_t function, uint32_t* data, volatile uint8_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp)
+void N_MasterGetFirstRelevantNodeData(uint8_t function, volatile uint32_t* data, volatile uint16_t*** capabilities_ppp, volatile uint32_t*** node_data_ppp)
 {
 	for(uint8_t nodeindx=0; nodeindx<N_NODE_AMOUNT; nodeindx++)
 	{
@@ -261,15 +348,15 @@ void N_MasterGetFirstRelevantNodeData(uint8_t function, uint32_t* data, volatile
  * desc: read local stored data
  * nd - data block for node
  * data - pointer to variable where to store the value
- * data type - what kind of data to get (values are in node.h at section: node functions)
+ * function - what kind of data to get (values are in node.h at section: node functions)
  * capabilitiesf - block which stores what node functions are available in the current node
  */
-int N_GetNodeData(uint32_t* nd, uint32_t* data, uint8_t data_type, const uint8_t* capabilitiesf)
+int8_t N_GetNodeData(volatile uint32_t* nd, uint32_t* data, uint8_t function, volatile uint16_t* capabilitiesf)
 {
 	uint8_t i = 0;
 	while(capabilitiesf[i])
 	{
-		if(capabilitiesf[i] == data_type)
+		if(capabilitiesf[i] == function)
 		{
 			*data = nd[i];
 			return 0;
@@ -283,16 +370,16 @@ int N_GetNodeData(uint32_t* nd, uint32_t* data, uint8_t data_type, const uint8_t
  * desc: overwrite local stored data
  * nd - data block for node
  * data - data to store
- * data type - what kind of data to store (values are in node.h at section: node functions)
+ * function - what kind of data to store (values are in node.h at section: node functions)
  * capabilitiesf - block which stores what node functions are vailable in the current node
  * datachangef - variable to notify caller where the data was stored
  */
-int N_StoreNodeData(uint32_t* nd, uint32_t data, uint8_t data_type, const uint8_t* capabilitiesf, volatile uint8_t* datachangef)
+int8_t N_StoreNodeData(volatile uint32_t* nd, uint32_t data, uint8_t function, volatile uint16_t* capabilitiesf, volatile uint8_t* datachangef)
 {
 	uint8_t i = 0;
 	while(capabilitiesf[i])
 	{
-		if(capabilitiesf[i] == data_type)
+		if(capabilitiesf[i] == function)
 		{
 			if(nd[i] != data)
 						  

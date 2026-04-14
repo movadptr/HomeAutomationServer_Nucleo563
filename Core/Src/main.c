@@ -55,6 +55,8 @@ ETH_DMADescTypeDef  DMATxDscrTab[ETH_TX_DESC_CNT]; /* Ethernet Tx DMA Descriptor
 
 COM_InitTypeDef BspCOMInit;
 
+DCACHE_HandleTypeDef hdcache1;
+
 ETH_HandleTypeDef heth;
 
 I2C_HandleTypeDef hi2c2;
@@ -67,13 +69,11 @@ SD_HandleTypeDef hsd1;
 
 SPI_HandleTypeDef hspi5;
 
-UART_HandleTypeDef huart2;
-
 /* USER CODE BEGIN PV */
 
 volatile HAdata_S HAdata = {0};
 
-extern volatile uint8_t** node_capabilities_pp;
+extern volatile uint16_t** node_capabilities_pp;
 extern volatile uint32_t** node_data_pp;
 
 extern TX_SEMAPHORE RTCALARMASemaphore;
@@ -90,7 +90,8 @@ static void MX_RNG_Init(void);
 static void MX_RTC_Init(void);
 static void MX_SPI5_Init(void);
 static void MX_USART2_UART_Init(void);
-static void MX_SDMMC1_SD_Init(void);
+//static void MX_SDMMC1_SD_Init(void);
+static void MX_DCACHE1_Init(void);
 /* USER CODE BEGIN PFP */
 void fill_stack_heap_w_pattern(void);
 /* USER CODE END PFP */
@@ -109,7 +110,7 @@ int main(void)
 
   /* USER CODE BEGIN 1 */
 #ifdef DEBUG
-	fill_stack_heap_w_pattern();
+	//fill_stack_heap_w_pattern();
 #endif//DEBUG
   /* USER CODE END 1 */
 
@@ -138,12 +139,8 @@ int main(void)
   MX_RTC_Init();
   MX_SPI5_Init();
   MX_USART2_UART_Init();
-  //MX_SDMMC1_SD_Init();
+  MX_DCACHE1_Init();
   /* USER CODE BEGIN 2 */
-
-
-  CLEAR_BIT(RTC->CR, RTC_CR_ALRBE | RTC_CR_ALRBIE);//Disable the Alarm B interrupt, will enable it when RTC is updated from SNTP
-
 
 	BspCOMInit.BaudRate   = 115200;
 	BspCOMInit.WordLength = COM_WORDLENGTH_8B;
@@ -155,15 +152,11 @@ int main(void)
 		Error_Handler();
 	}
 
-	printf("\n\rROOM tempsensor device ID:%x\n\r", LM71_init(SPI_TEMP_ROOM_CS_Pin, SPI_TEMP_ROOM_CS_GPIO_Port) & 0x0000ffff);
+	printf("\n\rTempsensor device ID:%x\n\r", LM71_init(SPI_TEMP_ROOM_CS_Pin, SPI_TEMP_ROOM_CS_GPIO_Port) & 0x0000ffff);
 
 	oled_init();
 	write_text_H(0, 0, "H563ZI", Pixel_on, size_5x8);
 	print_disp_mat();
-
-	//setting up stuff for RS485 node network
-	node_data_pp = calloc(N_NODE_AMOUNT, sizeof(uint8_t**));
-	if(node_data_pp == NULL)	{ Error_Handler();}
 
 	N_MasterInitNodeNetwork(&node_capabilities_pp, &node_data_pp);
 
@@ -245,6 +238,33 @@ void SystemClock_Config(void)
   /** Configure the programming delay
   */
   __HAL_FLASH_SET_PROGRAM_DELAY(FLASH_PROGRAMMING_DELAY_2);
+}
+
+/**
+  * @brief DCACHE1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_DCACHE1_Init(void)
+{
+
+  /* USER CODE BEGIN DCACHE1_Init 0 */
+
+  /* USER CODE END DCACHE1_Init 0 */
+
+  /* USER CODE BEGIN DCACHE1_Init 1 */
+
+  /* USER CODE END DCACHE1_Init 1 */
+  hdcache1.Instance = DCACHE1;
+  hdcache1.Init.ReadBurstType = DCACHE_READ_BURST_WRAP;
+  if (HAL_DCACHE_Init(&hdcache1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN DCACHE1_Init 2 */
+
+  /* USER CODE END DCACHE1_Init 2 */
+
 }
 
 /**
@@ -459,6 +479,7 @@ static void MX_RTC_Init(void)
   sDate.Month = RTC_MONTH_JANUARY;
   sDate.Date = 0x1;
   sDate.Year = 0x0;
+
   if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BCD) != HAL_OK)
   {
     Error_Handler();
@@ -476,16 +497,6 @@ static void MX_RTC_Init(void)
   sAlarm.AlarmDateWeekDay = 0x1;
   sAlarm.Alarm = RTC_ALARM_A;
   sAlarm.FlagAutoClr = ALARM_FLAG_AUTOCLR_ENABLE;
-  if (HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BCD) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Enable the Alarm B
-  */
-  sAlarm.AlarmMask = RTC_ALARMMASK_DATEWEEKDAY|RTC_ALARMMASK_HOURS
-                              |RTC_ALARMMASK_MINUTES;
-  sAlarm.Alarm = RTC_ALARM_B;
   if (HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BCD) != HAL_OK)
   {
     Error_Handler();
@@ -587,38 +598,59 @@ static void MX_USART2_UART_Init(void)
 
   /* USER CODE END USART2_Init 0 */
 
+  LL_USART_InitTypeDef USART_InitStruct = {0};
+
+  LL_GPIO_InitTypeDef GPIO_InitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
+
+  /** Initializes the peripherals clock
+  */
+  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_USART2;
+  PeriphClkInitStruct.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /* Peripheral clock enable */
+  LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_USART2);
+
+  LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOD);
+  /**USART2 GPIO Configuration
+  PD5   ------> USART2_TX
+  PD6   ------> USART2_RX
+  */
+  GPIO_InitStruct.Pin = LL_GPIO_PIN_5|LL_GPIO_PIN_6;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_ALTERNATE;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  GPIO_InitStruct.Alternate = LL_GPIO_AF_7;
+  LL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+  /* USART2 interrupt Init */
+  NVIC_SetPriority(USART2_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),0, 0));
+  NVIC_EnableIRQ(USART2_IRQn);
+
   /* USER CODE BEGIN USART2_Init 1 */
 
   /* USER CODE END USART2_Init 1 */
-  huart2.Instance = USART2;
-  huart2.Init.BaudRate = 19200;
-  huart2.Init.WordLength = UART_WORDLENGTH_9B;
-  huart2.Init.StopBits = UART_STOPBITS_1;
-  huart2.Init.Parity = UART_PARITY_NONE;
-  huart2.Init.Mode = UART_MODE_TX_RX;
-  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart2.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_RS485Ex_Init(&huart2, UART_DE_POLARITY_HIGH, 0, 0) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetTxFifoThreshold(&huart2, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetRxFifoThreshold(&huart2, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_DisableFifoMode(&huart2) != HAL_OK)
-  {
-    Error_Handler();
-  }
+  USART_InitStruct.PrescalerValue = LL_USART_PRESCALER_DIV1;
+  USART_InitStruct.BaudRate = 19200;
+  USART_InitStruct.DataWidth = LL_USART_DATAWIDTH_9B;
+  USART_InitStruct.StopBits = LL_USART_STOPBITS_2;
+  USART_InitStruct.Parity = LL_USART_PARITY_NONE;
+  USART_InitStruct.TransferDirection = LL_USART_DIRECTION_TX_RX;
+  USART_InitStruct.HardwareFlowControl = LL_USART_HWCONTROL_NONE;
+  USART_InitStruct.OverSampling = LL_USART_OVERSAMPLING_16;
+  LL_USART_Init(USART2, &USART_InitStruct);
+  LL_USART_SetTXFIFOThreshold(USART2, LL_USART_FIFOTHRESHOLD_1_8);
+  LL_USART_SetRXFIFOThreshold(USART2, LL_USART_FIFOTHRESHOLD_1_8);
+  LL_USART_DisableFIFO(USART2);
+  LL_USART_ConfigAsyncMode(USART2);
+  LL_USART_Enable(USART2);
   /* USER CODE BEGIN USART2_Init 2 */
-
+  LL_USART_EnableIT_RXNE_RXFNE(USART2);
   /* USER CODE END USART2_Init 2 */
 
 }
@@ -653,6 +685,9 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOG, SPI_TEMP_ROOM_CS_Pin|RED_LED_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(RS485_DIR_GPIO_Port, RS485_DIR_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : USER_BTN_Pin */
   GPIO_InitStruct.Pin = USER_BTN_Pin;
@@ -713,11 +748,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF10_USB;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : FRNTDRSW_Pin */
-  GPIO_InitStruct.Pin = FRNTDRSW_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(FRNTDRSW_GPIO_Port, &GPIO_InitStruct);
+  /*Configure GPIO pin : RS485_DIR_Pin */
+  GPIO_InitStruct.Pin = RS485_DIR_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(RS485_DIR_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : ARD_D1_TX_Pin ARD_D0_RX_Pin */
   GPIO_InitStruct.Pin = ARD_D1_TX_Pin|ARD_D0_RX_Pin;
@@ -728,9 +764,6 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI3_IRQn);
-
   HAL_NVIC_SetPriority(EXTI13_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI13_IRQn);
 
@@ -742,11 +775,6 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 ///////////////////////////////////////////////////////////////////////////////////////////
-
-void HAL_RTCEx_AlarmBEventCallback(RTC_HandleTypeDef *hrtc)
-{
-	UNUSED(hrtc);
-}
 
 /*
  * alarm in every second
@@ -862,10 +890,16 @@ time_t get_local_rtc_time_date(RTC_DateTypeDef* RTC_Date_p,  RTC_TimeTypeDef* RT
 #endif//TIME_ZONE
 
 #ifdef DAYLIGHTSAVE
-	time_t timestamp_thisyear_oct_27_3_00 = RTCDateTime2timestamp_(RTC_Date_p->Year, 10, 26, 3, 0, 0);
-	time_t timestamp_thisyear_march_31_2_00 = RTCDateTime2timestamp_(RTC_Date_p->Year, 3, 31, 2, 0, 0);
+	time_t trigger_timestamp_thisyear_march = 0;
+	time_t trigger_timestamp_thisyear_oct = 0;
+	//get last suday of target month
+	last_sunday(RTC_Bcd2ToByte(RTC_Date_p->Year), 3, &trigger_timestamp_thisyear_march);//1774749600
+	last_sunday(RTC_Bcd2ToByte(RTC_Date_p->Year), 10, &trigger_timestamp_thisyear_oct); //1792897200
+	//adjust time to the exact hour
+	trigger_timestamp_thisyear_march += (2*3600);//+2h
+	trigger_timestamp_thisyear_oct += (3*3600);//+3h
 
-	if((timestamp <= timestamp_thisyear_march_31_2_00) || (timestamp >= timestamp_thisyear_oct_27_3_00))
+	if((timestamp <= trigger_timestamp_thisyear_march) || (timestamp >= trigger_timestamp_thisyear_oct))
 	{
 		timestamp -= 3600;
 	}
@@ -903,17 +937,45 @@ time_t get_local_rtc_time_date(RTC_DateTypeDef* RTC_Date_p,  RTC_TimeTypeDef* RT
 	return timestamp;
 }
 
+int8_t last_sunday(uint8_t year, uint8_t month, time_t* timestamp)
+{
+	if(month == 0)	{return-1;}//bad input
+
+    struct tm date = {0};
+
+    date.tm_year = year + 100;//tim.tm_year is referenced to 1900, RTC_Date.Year is referenced to 2000
+    date.tm_mon = month;  // next month (tm_mon is 0-based, RTC starts from 1)
+    date.tm_mday = 1;// Set to first day of next month
+    (*timestamp) = mktime(&date);
+    (*timestamp) -= 86400;//substract 1 day (sec)
+    date = *localtime(timestamp);
+    //Now date is last day of the given month
+    //offset = date.tm_wday; //0 = Sunday,  6 = Saturday  //if Sunday (0), offset = 0
+    (*timestamp) -= (date.tm_wday*86400);
+
+    /*date.tm_year = year + 100;//tim.tm_year is referenced to 1900, RTC_Date.Year is referenced to 2000
+	date.tm_mon = month;  // next month (tm_mon is 0-based, RTC starts from 1)
+	date.tm_mday = 1;// Set to first day of next month
+	mktime(&date);
+	date.tm_mday -= 1;//make last day of prev month
+	mktime(&date);
+	date.tm_mday -= date.tm_wday;//substarct offset (0 is sunday, 1 is monday ...)
+	*timestamp = mktime(&date);*/
+
+    return 0;
+}
+
 time_t RTCDateTime2timestamp_(uint8_t year, uint8_t month, uint8_t day, uint8_t hour, uint8_t min, uint8_t sec)
 {
 	struct tm DT;
 	time_t timestamp = 0;
 
-	DT.tm_sec = sec;
-	DT.tm_min = min;
-	DT.tm_hour = hour;
-	DT.tm_mday = day;
-	DT.tm_mon = month;
-	DT.tm_year =  year + 100;//tim.tm_year is referenced to 1900, RTC_Date.Year is referenced to 2000
+	DT.tm_sec = RTC_Bcd2ToByte(sec);
+	DT.tm_min = RTC_Bcd2ToByte(min);
+	DT.tm_hour = RTC_Bcd2ToByte(hour);
+	DT.tm_mday = RTC_Bcd2ToByte(day);
+	DT.tm_mon = RTC_Bcd2ToByte(month)-1;
+	DT.tm_year =  RTC_Bcd2ToByte(year) + 100;//tim.tm_year is referenced to 1900, RTC_Date.Year is referenced to 2000
 	DT.tm_isdst = 0;
 
 	timestamp = mktime(&DT);
@@ -1006,7 +1068,7 @@ void Error_Handler(void)
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
 
-  __disable_irq();
+  //__disable_irq();
 
   while (1)
   {

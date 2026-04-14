@@ -26,7 +26,6 @@
 
 
 void delete_disp_mat(void);
-void print_disp_mat(void);
 void character_info(char characterf, uint8_t size);
 
 //____________________for vertical orientation________________________________//
