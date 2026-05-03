@@ -37,7 +37,7 @@
 /* #define NX_DRIVER_ETH_HW_IP_INIT */
 
 /* USER CODE BEGIN EC */
-#define NX_ETH_CABLE_CONNECTION_CHECK_PERIOD 600
+#define NX_ETH_CABLE_CONNECTION_CHECK_PERIOD 6000
 /* USER CODE END EC */
 
 /* Exported macro ------------------------------------------------------------*/

@@ -25,26 +25,6 @@ TX_MUTEX uart2_mutex;
 ///functions//////////////////////////////////////////////////
 
 /*
- * shitty blocking delay
- * only valid at 550MHz clock
- * input: how many times 100us
- * TODO build a not shitty one
- */
-void delay100us_b(uint32_t us100)
-{
-	uint32_t cnt = 0;
-	while(us100)
-	{
-		cnt = 0;
-		while(cnt<55000)//100us
-		{
-			cnt++;
-		}
-		us100--;
-	}
-}
-
-/*
  * desc: writes to the node in the given address
  */
 int8_t N_MasterWriteNodeData(uint8_t nodeaddr, uint8_t function, uint32_t data)
@@ -102,21 +82,39 @@ void N_WriteEveryRelevantNode(uint8_t function, uint32_t data, volatile uint16_t
 {
 	tx_mutex_get(&uart2_mutex, TX_WAIT_FOREVER);
 
-	uint16_t txdata[10] = {N_ADDR, 10, N_CMD_WRITE_NACK, function, (uint16_t)((data>>0)&0xff), (uint16_t)((data>>8)&0xff), (uint16_t)((data>>16)&0xff), (uint16_t)((data>>24)&0xff), 0x0000, N_IDLE_CHAR};
-	for(uint8_t nodeindx=0; nodeindx<N_NODE_AMOUNT; nodeindx++)
+	TX_THREAD *thread_ptr;;
+	UINT priority;
+	UINT new_priority = 0;
+
+	thread_ptr = tx_thread_identify();
+	if(thread_ptr != NULL)
 	{
-		for(uint8_t cindx=0; (*capabilities_ppp)[nodeindx][cindx]!=0; cindx++)
+		priority = thread_ptr -> tx_thread_user_priority;
+		//temporarily elevating the thread priority to max, so when the thread wakes from sleep the scheduler surely won't change to another, thus the time critical communication won't be bothered
+		tx_thread_priority_change(thread_ptr, new_priority, &priority);
+
+		uint16_t txdata[10] = {N_ADDR, 10, N_CMD_WRITE_NACK, function, (uint16_t)((data>>0)&0xff), (uint16_t)((data>>8)&0xff), (uint16_t)((data>>16)&0xff), (uint16_t)((data>>24)&0xff), 0x0000, N_IDLE_CHAR};
+		for(uint8_t nodeindx=0; nodeindx<N_NODE_AMOUNT; nodeindx++)
 		{
-			if((*capabilities_ppp)[nodeindx][cindx] == function)
+			for(uint8_t cindx=0; (*capabilities_ppp)[nodeindx][cindx]!=0; cindx++)
 			{
-				txdata[0] = (N_ADDR|(nodeindx+1));
-				delay100us_b(5);
-				N_UART_Transmit(txdata, 10);
-				//todo receive with ack cmd
-				(*node_data_ppp)[nodeindx][cindx] = data;//also store it locally
-			}else{}
+				if((*capabilities_ppp)[nodeindx][cindx] == function)
+				{
+					txdata[0] = (N_ADDR|(nodeindx+1));
+					tx_thread_sleep(1);//1ms
+					N_UART_Transmit(txdata, 10);
+					//todo receive with ack cmd
+					(*node_data_ppp)[nodeindx][cindx] = data;//also store it locally
+				}else{}
+			}
 		}
+		//restore priority
+		tx_thread_priority_change(thread_ptr, priority, &new_priority);
 	}
+	else{ Error_Handler();}
+
+
+
 
 	tx_mutex_put(&uart2_mutex);
 }
@@ -128,34 +126,50 @@ void N_MasterReadFirstRelevantNodeData(uint8_t function, volatile uint32_t** dat
 {
 	tx_mutex_get(&uart2_mutex, TX_WAIT_FOREVER);
 
-	uint16_t txdata[6] = {N_ADDR, 6, N_CMD_READ, function, 0x0000, N_IDLE_CHAR};
-	uint8_t rxlen = 0;
+	TX_THREAD *thread_ptr;;
+	UINT priority;
+	UINT new_priority = 0;
 
-	for(uint8_t nodeindx=0; nodeindx<N_NODE_AMOUNT; nodeindx++)
+	thread_ptr = tx_thread_identify();
+	if(thread_ptr != NULL)
 	{
-		for(uint8_t cindx=0; (*capabilities_ppp)[nodeindx][cindx]!=0; cindx++)
+		priority = thread_ptr -> tx_thread_user_priority;
+		//temporarily elevating the thread priority to max, so when the thread wakes from sleep the scheduler surely won't change to another, thus the time critical communication won't be bothered
+		tx_thread_priority_change(thread_ptr, new_priority, &priority);
+
+		uint16_t txdata[6] = {N_ADDR, 6, N_CMD_READ, function, 0x0000, N_IDLE_CHAR};
+		uint8_t rxlen = 0;
+
+		for(uint8_t nodeindx=0; nodeindx<N_NODE_AMOUNT; nodeindx++)
 		{
-			if((*capabilities_ppp)[nodeindx][cindx] == function)
+			for(uint8_t cindx=0; (*capabilities_ppp)[nodeindx][cindx]!=0; cindx++)
 			{
-				txdata[0] = (N_ADDR|(nodeindx+1));
-				delay100us_b(5);
-				N_UART_Transmit(txdata, 6);
-				if(N_UART_receive(&rxlen)==0)
+				if((*capabilities_ppp)[nodeindx][cindx] == function)
 				{
-					(*node_data_ppp)[nodeindx][cindx] = ((uart_rx_buff[4]<<0) | (uart_rx_buff[5]<<8) | (uart_rx_buff[6]<<16) | (uart_rx_buff[7]<<24));//save received data
-					if(data!=NULL)
+					txdata[0] = (N_ADDR|(nodeindx+1));
+					tx_thread_sleep(1);//1ms
+					N_UART_Transmit(txdata, 6);
+					if(N_UART_receive(&rxlen)==0)
 					{
-						*data = &((*node_data_ppp)[nodeindx][cindx]);//copy received data location to use immediately
+						(*node_data_ppp)[nodeindx][cindx] = ((uart_rx_buff[4]<<0) | (uart_rx_buff[5]<<8) | (uart_rx_buff[6]<<16) | (uart_rx_buff[7]<<24));//save received data
+						if(data!=NULL)
+						{
+							*data = &((*node_data_ppp)[nodeindx][cindx]);//copy received data location to use immediately
+						}
+						else
+						{
+							*data = NULL;
+						}
 					}
-					else
-					{
-						*data = NULL;
-					}
+					return;
 				}
-				return;
 			}
 		}
+		//restore priority
+		tx_thread_priority_change(thread_ptr, priority, &new_priority);
 	}
+	else{ Error_Handler();}
+
 	tx_mutex_put(&uart2_mutex);
 }
 
@@ -166,34 +180,49 @@ void N_MasterRefreshAllNodeData(volatile uint16_t*** capabilities_ppp, volatile 
 {
 	tx_mutex_get(&uart2_mutex, TX_WAIT_FOREVER);
 
-	uint16_t txdata[6] = {N_ADDR, 6, N_CMD_READ, 0x0000, 0x0000, N_IDLE_CHAR};
-	uint8_t rxlen = 0;
+	TX_THREAD *thread_ptr;;
+	UINT priority;
+	UINT new_priority = 0;
 
-	for(uint8_t nodeindx=0; nodeindx<N_NODE_AMOUNT; nodeindx++)
+	thread_ptr = tx_thread_identify();
+	if(thread_ptr != NULL)
 	{
-		for(uint8_t cindx=0; (*capabilities_ppp)[nodeindx][cindx]!=0; cindx++)
+		priority = thread_ptr -> tx_thread_user_priority;
+		//temporarily elevating the thread priority to max, so when the thread wakes from sleep the scheduler surely won't change to another, thus the time critical communication won't be bothered
+		tx_thread_priority_change(thread_ptr, new_priority, &priority);
+
+		uint16_t txdata[6] = {N_ADDR, 6, N_CMD_READ, 0x0000, 0x0000, N_IDLE_CHAR};
+		uint8_t rxlen = 0;
+
+		for(uint8_t nodeindx=0; nodeindx<N_NODE_AMOUNT; nodeindx++)
 		{
-			txdata[0] = (N_ADDR|(nodeindx+1));
-			txdata[3] = (*capabilities_ppp)[nodeindx][cindx];
-			N_UART_Transmit(txdata, 6);
-			if(N_UART_receive(&rxlen)==0)
+			for(uint8_t cindx=0; (*capabilities_ppp)[nodeindx][cindx]!=0; cindx++)
 			{
-				(*node_data_ppp)[nodeindx][cindx] = ((uart_rx_buff[4]<<0) | (uart_rx_buff[5]<<8) | (uart_rx_buff[6]<<16) | (uart_rx_buff[7]<<24));
+				txdata[0] = (N_ADDR|(nodeindx+1));
+				txdata[3] = (*capabilities_ppp)[nodeindx][cindx];
+				N_UART_Transmit(txdata, 6);
+				if(N_UART_receive(&rxlen)==0)
+				{
+					(*node_data_ppp)[nodeindx][cindx] = ((uart_rx_buff[4]<<0) | (uart_rx_buff[5]<<8) | (uart_rx_buff[6]<<16) | (uart_rx_buff[7]<<24));
+				}
+	#ifdef DEBUG
+				printf("a_%i__c_", txdata[0]);
+				uint8_t asd = 0;
+				while(asd<rxlen)
+				{
+					printf("%i_",uart_rx_buff[asd]);
+					asd++;
+				}
+				printf(".\n\n\r");
+	#else
+				tx_thread_sleep(4);//4ms  //TODO debug, why is it working with this?????
+	#endif
 			}
-#ifdef DEBUG
-			printf("a_%i__c_", txdata[0]);
-			uint8_t asd = 0;
-			while(asd<rxlen)
-			{
-				printf("%i_",uart_rx_buff[asd]);
-				asd++;
-			}
-			printf(".\n\n\r");
-#else
-			LL_mDelay(3);//TODO debug, why is it working with this?????
-#endif
 		}
+		//restore priority
+		tx_thread_priority_change(thread_ptr, priority, &new_priority);
 	}
+	else{ Error_Handler();}
 
 	tx_mutex_put(&uart2_mutex);
 }
@@ -218,7 +247,7 @@ void N_MasterInitNodeNetwork(volatile uint16_t*** capabilitiesf_ppp, volatile ui
 	while(addr < N_NODE_AMOUNT)
 	{
 		tx[0] = (N_ADDR|(addr+1));
-		delay100us_b(5);
+		HAL_Delay(1);
 		N_UART_Transmit(tx, 5);
 		if(N_UART_receive(&rxlen)==0)
 		{

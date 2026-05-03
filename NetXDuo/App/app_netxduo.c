@@ -636,7 +636,7 @@ static VOID App_UDP_Thread_Entry(ULONG thread_input)
   while(1)
   {
     TX_MEMSET(data_buffer, '\0', sizeof(data_buffer));
-    ret = nx_udp_socket_receive(&UDPSocket, &data_packet, 100);//wait for data for 1 sec
+    ret = nx_udp_socket_receive(&UDPSocket, &data_packet, 1000);//wait for data for 1 sec
 
     //get time  date data from rtc
 	HAL_RTC_GetTime(&RtcHandle,&RTC_Time,RTC_FORMAT_BCD);
@@ -773,14 +773,14 @@ static VOID App_Link_Thread_Entry(ULONG thread_input)
   while(1)
   {
     //Get Physical Link status.
-    status = nx_ip_interface_status_check(&NetXDuoEthIpInstance, 0, NX_IP_LINK_ENABLED, &actual_status, 10);
+    status = nx_ip_interface_status_check(&NetXDuoEthIpInstance, 0, NX_IP_LINK_ENABLED, &actual_status, 100);
 
     if(status == NX_SUCCESS)
     {
       if(linkdown == 1)
       {
         linkdown = 0;
-        status = nx_ip_interface_status_check(&NetXDuoEthIpInstance, 0, NX_IP_ADDRESS_RESOLVED, &actual_status, 10);
+        status = nx_ip_interface_status_check(&NetXDuoEthIpInstance, 0, NX_IP_ADDRESS_RESOLVED, &actual_status, 100);
         if(status == NX_SUCCESS)
         {
           printf("The network cable is connected again.\n\r");
